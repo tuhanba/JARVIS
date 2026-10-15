@@ -1,18 +1,24 @@
-# Core
-beautifulsoup4>=4.10
-geocoder>=1.38.1
-opencv-contrib-python>=4.8   # cv2.face (LBPH) needs the contrib build
-Pillow>=9.0
-psutil>=5.8
-PyAudio>=0.2.13              # Linux: apt install portaudio19-dev first
-PyAutoGUI>=0.9.53
-pyjokes>=0.6.0
-pytesseract>=0.3.10          # also needs the Tesseract OCR binary installed
-pyttsx3>=2.90                # Linux: apt install espeak-ng
-pytubefix>=6.0               # maintained fork of pytube
-requests>=2.26
+# Voice in / out
 SpeechRecognition>=3.10
-wikipedia>=1.4.0
+PyAudio>=0.2.13              # Linux: apt install portaudio19-dev first
+edge-tts>=6.1                # natural Turkish voice (needs internet)
+pygame>=2.5                  # plays the edge-tts audio
+pyttsx3>=2.90                # offline fallback voice (Linux: apt install espeak-ng)
+
+# AI brain (free Gemini API key in .env)
+google-genai>=1.0
+python-dotenv>=1.0
+
+# Computer control
+PyAutoGUI>=0.9.53
+pyperclip>=1.8
+psutil>=5.8
+screen-brightness-control>=0.20
+
+# Web
+requests>=2.26
+beautifulsoup4>=4.10         # amazon.py
+pytubefix>=6.0               # youtube_downloader.py
 
 # Windows-only
 comtypes>=1.1.10; sys_platform == "win32"

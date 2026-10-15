@@ -1,3 +1,38 @@
+# JARVIS — Türkçe sesli asistan
+
+Türkçe dinler, Türkçe konuşur, bilgisayarınızı yönetir. Anlamadığı her şeyi
+ücretsiz **Gemini** yapay zekasına sorar; Gemini de bilgisayarda iş yapabilir
+(dosya, uygulama, PowerShell komutu...). Kamera kullanılmaz.
+
+## Kurulum (Windows)
+
+1. [Python 3.12](https://www.python.org/downloads/) kurun ("Add Python to PATH" işaretli).
+2. Bu klasörde **`kur.bat`** dosyasına çift tıklayın.
+3. https://aistudio.google.com/apikey adresinden ücretsiz Gemini anahtarı alın,
+   klasördeki **`.env`** dosyasını Not Defteri ile açıp `GEMINI_API_KEY=` satırının sonuna yapıştırın.
+4. **`baslat.bat`** (sesli) veya **`yazarak_baslat.bat`** (klavyeyle) ile başlatın.
+
+## Örnek komutlar
+
+| Ne | Örnek |
+|---|---|
+| Saat / tarih | "saat kaç", "bugün günlerden ne" |
+| Hava, haber, döviz | "Ankara'da hava nasıl", "haberleri oku", "dolar kaç" |
+| Uygulama | "Chrome'u aç", "not defterini aç", "Spotify'ı kapat" |
+| Site / arama | "instagram aç", "Google'da python dersleri ara", "YouTube'da Tarkan çal" |
+| Ses / ekran | "sesi aç", "sesi kıs", "parlaklığı 40 yap", "ekran görüntüsü al" |
+| Not / hatırlatma | "not al süt al", "notlarımı oku", "10 dakika sonra çayı hatırlat" |
+| Dosyalar | "masaüstü klasörünü aç", "indirilenler neler var" |
+| Klavye | "şunu yaz Merhaba", "kopyala", "yapıştır", "pencere değiştir" |
+| Bilgisayar | "bilgisayarı kilitle", "bilgisayarı kapat", "yeniden başlat", "uyku modu" |
+| Yapay zeka | "masaüstümdeki pdf dosyalarını bul", "bana bir e-posta taslağı yaz", her türlü soru |
+| Çıkış | "görüşürüz" |
+
+Silme, taşıma, kapatma gibi geri alınamaz işlemlerden önce JARVIS "evet" onayı ister.
+`.env` içinde `JARVIS_TAM_YETKI=1` yaparsanız sormaz (yanlış duyulan bir cümle dosya silebilir — önerilmez).
+
+---
+
 <h1 align="center">J.A.R.V.I.S </h1> 
 
 <div align="center">
