@@ -49,9 +49,13 @@ pip install PyAudio‑0.2.11‑cp<version>‑cp<version>m‑win_amd<architecture
 
 ### On Ubuntu based Linux distribution you need to install the following packages, so that the code works:
 
-```
-sudo apt-get update && sudo apt-get install espeak
-
+```bash
+sudo apt-get update
+sudo apt-get install espeak-ng portaudio19-dev tesseract-ocr python3-tk python3-dev scrot
+python3 -m venv venv            # needs a Python that has tkinter (python3-tk)
+source venv/bin/activate
+pip install -r requirements.txt
+python jarvis.py
 ```
 
 ### What it does...

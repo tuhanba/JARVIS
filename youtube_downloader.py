@@ -1,4 +1,5 @@
-from pytube import *
+import os
+from pytubefix import *
 from tkinter import *
 from tkinter.filedialog import *
 from tkinter.messagebox import *
@@ -56,12 +57,15 @@ main = Tk()
 main.title("My YouTube Downloader")
 main.config(bg='#3498DB')
 
-main.iconbitmap('images\\youtube-ios-app.ico')
+try:
+    main.iconbitmap(os.path.join('images', 'youtube-ios-app.ico'))
+except TclError:
+    pass  # .ico icons are only supported on Windows
 
 main.geometry("500x600")
 
 file = PhotoImage(
-    file='images\\photo.png')
+    file=os.path.join('images', 'photo.png'))
 headingIcon = Label(main, image=file)
 headingIcon.pack(side=TOP)
 
