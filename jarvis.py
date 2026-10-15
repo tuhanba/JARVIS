@@ -237,26 +237,22 @@ def wakeUpJARVIS():
         bot_.execute_query(query)
                
 
-if __name__ == '__main__':
-    
+def faceRecognition() -> bool:
+    """Return True when a known face is seen on the webcam."""
     recognizer = cv2.face.LBPHFaceRecognizer_create() # Local Binary Patterns Histograms
     recognizer.read('./Face-Recognition/trainer/trainer.yml')   #load trained model
     cascadePath = "./Face-Recognition/haarcascade_frontalface_default.xml"
     faceCascade = cv2.CascadeClassifier(cascadePath) #initializing haar cascade for object detection approach
 
-    font = cv2.FONT_HERSHEY_SIMPLEX #denotes the font type
-
-
-    id = 2 #number of persons you want to Recognize
-
-
-    names = ['','Gaurav']  #names, leave first empty bcz counter starts from 0
-
-
     if platform == "win32":
         cam = cv2.VideoCapture(0, cv2.CAP_DSHOW) #cv2.CAP_DSHOW to remove warning
+        if not cam.isOpened():
+            cam = cv2.VideoCapture(0)
     else:
         cam = cv2.VideoCapture(0)
+    if not cam.isOpened():
+        print('Camera could not be opened.')
+        return False
     cam.set(3, 640) # set video FrameWidht
     cam.set(4, 480) # set video FrameHeight
 
@@ -264,38 +260,37 @@ if __name__ == '__main__':
     minW = 0.1*cam.get(3)
     minH = 0.1*cam.get(4)
 
-    # flag = True
+    try:
+        while True:
+            ret, img = cam.read() #read the frames using the above created object
+            if not ret or img is None:
+                print('Could not read from camera.')
+                return False
 
-    while True:
+            converted_image = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)  #The function converts an input image from one color space to another
 
-        ret, img =cam.read() #read the frames using the above created object
+            faces = faceCascade.detectMultiScale(
+                converted_image,
+                scaleFactor = 1.2,
+                minNeighbors = 5,
+                minSize = (int(minW), int(minH)),
+            )
 
-        converted_image = cv2.cvtColor(img,cv2.COLOR_BGR2GRAY)  #The function converts an input image from one color space to another
+            for(x,y,w,h) in faces:
+                id, accuracy = recognizer.predict(converted_image[y:y+h,x:x+w]) #to predict on every single image
 
-        faces = faceCascade.detectMultiScale( 
-            converted_image,
-            scaleFactor = 1.2,
-            minNeighbors = 5,
-            minSize = (int(minW), int(minH)),
-        )
-
-        for(x,y,w,h) in faces:
-
-            cv2.rectangle(img, (x,y), (x+w,y+h), (0,255,0), 2) #used to draw a rectangle on any image
-
-            id, accuracy = recognizer.predict(converted_image[y:y+h,x:x+w]) #to predict on every single image
-
-            # Check if accuracy is less them 100 ==> "0" is perfect match 
-            if (accuracy < 100):
-                
-                # Do a bit of cleanup
-                speak("Optical Face Recognition Done. Welcome")
-                cam.release()
-                cv2.destroyAllWindows()
-                wakeUpJARVIS()
-            else:
+                # Check if accuracy is less them 100 ==> "0" is perfect match
+                if (accuracy < 100):
+                    speak("Optical Face Recognition Done. Welcome")
+                    return True
                 speak("Optical Face Recognition Failed")
-                break;
+    finally:
+        cam.release()
+        cv2.destroyAllWindows()
 
 
-    
+if __name__ == '__main__':
+    # Face recognition is opt-in: `python jarvis.py --face`
+    if '--face' in sys.argv and not faceRecognition():
+        sys.exit(1)
+    wakeUpJARVIS()

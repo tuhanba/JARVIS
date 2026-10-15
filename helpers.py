@@ -12,7 +12,6 @@ from difflib import get_close_matches
 engine = pyttsx3.init()
 voices = engine.getProperty('voices')
 engine.setProperty('voice', voices[0].id)
-g = geocoder.ip('me')
 data = json.load(open('data.json'))
 
 def speak(audio) -> None:
@@ -57,21 +56,25 @@ def takeCommand() -> str:
     return query
 
 def weather():
-    api_url = "https://fcc-weather-api.glitch.me/api/current?lat=" + \
-        str(g.latlng[0]) + "&lon=" + str(g.latlng[1])
+    try:
+        g = geocoder.ip('me')
+        api_url = "https://fcc-weather-api.glitch.me/api/current?lat=" + \
+            str(g.latlng[0]) + "&lon=" + str(g.latlng[1])
 
-    data = requests.get(api_url)
-    data_json = data.json()
-    if data_json['cod'] == 200:
-        main = data_json['main']
-        wind = data_json['wind']
-        weather_desc = data_json['weather'][0]
-        speak(str(data_json['coord']['lat']) + 'latitude' + str(data_json['coord']['lon']) + 'longitude')
-        speak('Current location is ' + data_json['name'] + data_json['sys']['country'] + 'dia')
-        speak('weather type ' + weather_desc['main'])
-        speak('Wind speed is ' + str(wind['speed']) + ' metre per second')
-        speak('Temperature: ' + str(main['temp']) + 'degree celcius')
-        speak('Humidity is ' + str(main['humidity']))
+        data = requests.get(api_url, timeout=5)
+        data_json = data.json()
+        if data_json['cod'] == 200:
+            main = data_json['main']
+            wind = data_json['wind']
+            weather_desc = data_json['weather'][0]
+            speak(str(data_json['coord']['lat']) + 'latitude' + str(data_json['coord']['lon']) + 'longitude')
+            speak('Current location is ' + data_json['name'] + data_json['sys']['country'] + 'dia')
+            speak('weather type ' + weather_desc['main'])
+            speak('Wind speed is ' + str(wind['speed']) + ' metre per second')
+            speak('Temperature: ' + str(main['temp']) + 'degree celcius')
+            speak('Humidity is ' + str(main['humidity']))
+    except Exception:
+        print('Weather information is not available right now.')
 
 
 def translate(word):
