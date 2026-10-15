@@ -28,10 +28,10 @@ class Jarvis:
             self.chrome_path = '/usr/bin/google-chrome'
 
         elif platform == "darwin":
-            self.chrome_path = 'open -a /Applications/Google\ Chrome.app'
+            self.chrome_path = r'open -a /Applications/Google\ Chrome.app'
 
         elif platform == "win32":
-            self.chrome_path = 'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'
+            self.chrome_path = r'C:\Program Files (x86)\Google\Chrome\Application\chrome.exe'
         else:
             print('Unsupported OS')
             exit(1)
@@ -137,11 +137,11 @@ class Jarvis:
             speak('Here is the location ' + location)
 
         elif 'your master' in query:
-            if platform == "win32" or "darwin":
+            if platform in ("win32", "darwin"):
                 speak('Gaurav is my master. He created me couple of days ago')
             elif platform == "linux" or platform == "linux2":
                 name = getpass.getuser()
-                speak(name, 'is my master. He is running me right now')
+                speak(name + ' is my master. He is running me right now')
 
         elif 'your name' in query:
             speak('My name is JARVIS')
@@ -154,13 +154,13 @@ class Jarvis:
             if platform == "win32":
                 os.startfile(
                     "C:\\Users\\gs935\\AppData\\Local\\Programs\\Microsoft VS Code\\Code.exe")
-            elif platform == "linux" or platform == "linux2" or "darwin":
+            else:
                 os.system('code .')
 
         elif 'shutdown' in query:
             if platform == "win32":
                 os.system('shutdown /p /f')
-            elif platform == "linux" or platform == "linux2" or "darwin":
+            else:
                 os.system('poweroff')
 
         elif 'cpu' in query:
@@ -253,7 +253,10 @@ if __name__ == '__main__':
     names = ['','Gaurav']  #names, leave first empty bcz counter starts from 0
 
 
-    cam = cv2.VideoCapture(0, cv2.CAP_DSHOW) #cv2.CAP_DSHOW to remove warning
+    if platform == "win32":
+        cam = cv2.VideoCapture(0, cv2.CAP_DSHOW) #cv2.CAP_DSHOW to remove warning
+    else:
+        cam = cv2.VideoCapture(0)
     cam.set(3, 640) # set video FrameWidht
     cam.set(4, 480) # set video FrameHeight
 
