@@ -79,7 +79,25 @@ bütçesi, referans belleği, çok amaçlı cümle yönlendirmesi, `python -m ja
 Ölçüm notu: qwen3:4b bu CPU'da tur başına 1000+ düşünme token'ı × ~4 tok/sn ≈ 5 dk/tur üretti; değerlendirme
 pratik olmadığı için **ölçülmedi**. Gerçek karşılaştırma kullanıcının GPU'lu makinesinde yapılmalı (NEXT_STEPS).
 
-DEGERLENDIRME_SONUCU
+### Türkçe görev değerlendirmesi (qwen3:1.7b, CPU, 11 görev × 2 tekrar)
+
+`python -m jarvis_core.degerlendirme --model qwen3:1.7b --tekrar 2`. Başarı = bağımsız son durum kontrolü
+(diskteki dosya, cevap içeriği). Bu donanım ve model kullanıcının hedef donanımı değildir.
+
+| Koşu | Başarı | Sahte başarı | Yanlış sohbet | Ort. görev | İlk parça p50 | Üretim |
+|---|---|---|---|---|---|---|
+| Araç seçimi kapalı (tüm şemalar), düzeltmelerden önce | 17/22 (%77) | 2* | — | 40.4 sn | 6.3 sn | 7.3 tok/sn |
+| Araç seçimi açık, düzeltmelerden önce | 17/22 (%77) | 2* | — | 24.0 sn | 4.8 sn | 10.1 tok/sn |
+| Araç seçimi açık + benchmark düzeltmeleri | **18/22 (%82)** | **1** | 2 | **21.6 sn** | 5.4 sn | 10.6 tok/sn |
+
+\* İlk iki koşuda "sahte başarı"nın tamamı sohbet sorusundaki bilgi hatasıydı ("başkent İstanbul"); ölçüt sonra
+ayrıldı. Kapalı koşu sırasında başka testler de CPU kullandı; süre farkının bir kısmı buna bağlı olabilir.
+
+Kalan hatalar: `takip` 1/2 (model ikinci istekte yanlış yol verdi), `ara_bul` 1/2 sahte başarı (model dosyayı
+buldu ama adını söylemedi — sohbet metninin eksikliğini motor bilemez), `sohbet` 0/2 (bu konteynerde web araması
+sonuç vermedi; model aramaya gitti; görev dürüstçe `dogrulanamadi`), `red_durust` bir koşuda `dongu` ile durdu
+(yine de silmedi). Hedef (%90 doğrulanmış başarı, 0 sahte başarı) **bu küçük modelle karşılanmadı**; kullanıcının
+GPU'lu makinesinde 9B sınıfı modelle ölçülmeli.
 
 ## Aşama C — Yerel Türkçe ses: **yazılım tarafı tamam, donanım doğrulaması blocked**
 
