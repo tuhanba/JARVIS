@@ -1,3 +1,58 @@
+# JARVIS — Türkçe sesli asistan
+
+Türkçe dinler, Türkçe konuşur ve Windows bilgisayarınızda gerçek işler yapar. Yapay zekası
+**Ollama** ile tamamen sizin bilgisayarınızda çalışır; buluta veri gönderilmez.
+Kamera kullanılmaz.
+
+İstekler bir **görev motorundan** geçer: model bir plan yapar, araçları çağırır, her adımın
+sonucunu gözlemler ve doğrular. "Tamamlandı" yalnızca sonuç gerçekten görüldüğünde söylenir
+(dosya diskte, uygulama süreç/pencere olarak açık). Her adım `veri/jarvis.db` içine kaydedilir;
+yarıda kalan görev yeniden başlatmada sürdürülebilir ve yapılmış işlemler tekrarlanmaz.
+
+## Kurulum (Windows)
+
+1. [Python 3.12](https://www.python.org/downloads/) kurun ("Add Python to PATH" işaretli).
+2. **`kur.bat`**: Python paketlerini, Ollama'yı ve `.env` içindeki modeli indirir.
+3. **`saglik.bat`**: donanım, Ollama, modeller, mikrofon ve internet raporunu gösterir.
+4. Başlatma:
+   - **`baslat.bat`** sesli asistan, **`yazarak_baslat.bat`** klavyeyle,
+   - **`gorev_motoru.bat`** görev motoru konsolu (`/yardim`, `/gorevler`, `/izinler`, `/devam`, `/geri-al`).
+
+Bilgisayarınız zayıfsa `.env` dosyasında `OLLAMA_MODEL=qwen3.5:4b` yapıp `kur.bat`'ı tekrar çalıştırın.
+
+## Güvenlik ve izinler
+
+- Okuma serbest. Belgeler, Masaüstü, İndirilenler, Resimler, Müzik, Videolar içine yazma serbest;
+  başka yerlere yazma onay ister.
+- Silme (Geri Dönüşüm Kutusu'na) her zaman onay ister; isterseniz klasör bazında izin verebilirsiniz
+  (`/izin-ver cop_kutusuna_gonder İndirilenler`). Dışarıya mesaj ve sistem işlemleri her seferinde sorulur.
+- Kabuk (PowerShell/cmd) yoktur. Programlar argüman listesiyle çalışır; izinli liste dışındakiler sorulur.
+- Web sayfası, dosya veya arama sonucundaki talimatlar komut sayılmaz; bunlar okunduktan sonra yapılan
+  her değişiklik ayrıca onay ister.
+- Parola/token benzeri metinler kayıtlarda maskelenir. Acil durdurma: **Ctrl+Alt+End** (görev çalışırken "dur" da olur).
+
+## Örnek komutlar
+
+| Ne | Örnek |
+|---|---|
+| Saat / tarih | "saat kaç", "bugün günlerden ne" |
+| Hava, haber, döviz | "Ankara'da hava nasıl", "haberleri oku", "dolar kaç" |
+| Uygulama | "Chrome'u aç", "not defterini aç", "Spotify'ı kapat" |
+| Site / arama | "instagram aç", "Google'da python dersleri ara", "YouTube'da Tarkan çal" |
+| Ses / ekran | "sesi aç", "sesi kıs", "parlaklığı 40 yap", "ekran görüntüsü al" |
+| Not / hatırlatma | "not al süt al", "notlarımı oku", "10 dakika sonra çayı hatırlat" |
+| Dosyalar | "masaüstü klasörünü aç", "indirilenler neler var" |
+| Klavye | "şunu yaz Merhaba", "kopyala", "yapıştır", "pencere değiştir" |
+| Bilgisayar | "bilgisayarı kilitle", "bilgisayarı kapat", "yeniden başlat", "uyku modu" |
+| Yapay zeka | "masaüstümdeki pdf dosyalarını bul", "dün Fenerbahçe maçı kaç bitti", "ekranda ne var", |
+| | "indirilenlerdeki resimleri Resimler klasörüne taşı", "benim doğum günüm 3 Mayıs, unutma" |
+| Çıkış | "görüşürüz" |
+
+Silme, taşıma, kapatma gibi geri alınamaz işlemlerden önce JARVIS "evet" onayı ister.
+`.env` içinde `JARVIS_TAM_YETKI=1` yaparsanız sormaz (yanlış duyulan bir cümle dosya silebilir — önerilmez).
+
+---
+
 <h1 align="center">J.A.R.V.I.S </h1> 
 
 <div align="center">
