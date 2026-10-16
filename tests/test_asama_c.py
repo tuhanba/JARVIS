@@ -74,6 +74,7 @@ def test_cevrimici_ses_yalniz_acik_izinle(monkeypatch):
     stt, not_ = secim.stt_sec()
     assert stt is None and 'JARVIS_SES_CEVRIMICI=1' in not_
     monkeypatch.setenv('JARVIS_SES_CEVRIMICI', '1')
+    monkeypatch.setattr(secim, '_modul_var', lambda ad: ad == 'speech_recognition')
     stt, not_ = secim.stt_sec()
     assert stt is not None and not stt.yerel and 'Google' in not_
 
@@ -176,3 +177,15 @@ def test_hatirlatma_komutu_kalici_kayit_ve_dogrulama(motor_yap, ev):
     s = m.hizli_calistir('yarın 9da toplantıyı hatırlat', niyet)
     assert s.durum == 'tamamlandi' and '09:00' in s.cevap and 'toplantıyı' in s.cevap
     assert [k['metin'] for k in _zamanlayici(ev).bekleyenler()] == ['toplantıyı']
+
+
+def test_saat_dilimi_veritabani_yoksa_sabit_ofset(monkeypatch):
+    """Windows without the tzdata package: ZoneInfo fails; Istanbul must still be UTC+3."""
+    import datetime as dt
+    from jarvis_core import zamanlayici
+
+    def yok(ad):
+        raise KeyError(ad)
+    monkeypatch.setattr(zamanlayici, 'ZoneInfo', yok)
+    monkeypatch.setenv('JARVIS_SAAT_DILIMI', 'Europe/Istanbul')
+    assert zamanlayici.saat_dilimi().utcoffset(None) == dt.timedelta(hours=3)

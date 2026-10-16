@@ -22,11 +22,17 @@ TABLO = """CREATE TABLE IF NOT EXISTS hatirlatmalar (
 GEC_TOLERANS = 120     # seconds: later than this counts as missed (JARVIS was not running)
 
 
-def saat_dilimi() -> ZoneInfo:
+# Windows has no IANA time zone database; the `tzdata` package provides it. Without it,
+# fall back to fixed offsets (Turkey has been UTC+3 all year since 2016).
+SABIT = {'Europe/Istanbul': dt.timezone(dt.timedelta(hours=3), 'TRT'), 'UTC': dt.timezone.utc}
+
+
+def saat_dilimi():
+    ad = os.getenv('JARVIS_SAAT_DILIMI', 'Europe/Istanbul')
     try:
-        return ZoneInfo(os.getenv('JARVIS_SAAT_DILIMI', 'Europe/Istanbul'))
+        return ZoneInfo(ad)
     except Exception:
-        return ZoneInfo('UTC')
+        return SABIT.get(ad, dt.timezone.utc)
 
 
 def yerel_metin(zaman: float) -> str:
