@@ -136,3 +136,10 @@ Test (Linux, Windows değil):
   (GPU'suz sunucuda 329 sn; ilk model yüklemesi dahil).
 - Windows'ta çalıştırılmadı: Edge uygulama penceresi, kısayol/ikon oluşturma, mikrofonla uyandırma sözcüğü,
   nvidia-smi telemetrisi.
+
+## 7. Windows geri bildirimi sonrası düzeltmeler
+
+| Sorun (kullanıcı, Windows) | Kök neden | Düzeltme | Doğrulama |
+|---|---|---|---|
+| Ses Türkçe-İngilizce karışık ve net değil | Çevrimiçi ses çalışmadığında İngilizce Windows sesine düşüyordu | Varsayılan ses yerel Piper Türkçe (+ JARVIS efekti); Windows sesi yalnız Türkçe ise kullanılır | Linux'ta sentez + oynatma; kırpılma yok; susturma 0.03 sn. Windows'ta kulakla doğrulanmadı |
+| DURDUR'dan sonra yeni emir tıkanıyor | İptal sonrası Ollama eski cevabı üretmeye devam edebiliyordu; konuşma görevi bloke ediyordu | Ollama akışı kendi soketimizle (iptalde kapatılır); konuşma ayrı kuyrukta; 4 sn bekçi; görev sıra numarası | Canlı: iptal 0.04 sn, sonraki istek 3.4 sn. 3 yeni panel testi. Windows'ta denenmedi |

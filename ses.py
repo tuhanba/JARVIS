@@ -1,7 +1,10 @@
-"""Speech in and out: Turkish TTS (edge-tts, pyttsx3 fallback) and STT
-(Google speech recognition), or plain keyboard input in text mode."""
+"""Speech in and out. TTS: local Piper Turkish voice with the JARVIS effect
+(default), Microsoft edge-tts, or a Turkish Windows voice. STT: Google speech
+recognition, or plain keyboard input in text mode."""
 import asyncio
 import os
+import queue
+import re
 import tempfile
 import threading
 
@@ -30,37 +33,69 @@ def mikrofon_var() -> bool:
 
 def _edge_konus(metin: str) -> None:
     import edge_tts
-    import pygame
+    from jarvis_core.konusma import cal
 
     fd, yol = tempfile.mkstemp(suffix='.mp3')
     os.close(fd)
     try:
         asyncio.run(edge_tts.Communicate(metin, SES).save(yol))
-        if not pygame.mixer.get_init():
-            pygame.mixer.init()
-        pygame.mixer.music.load(yol)
-        pygame.mixer.music.play()
-        while pygame.mixer.music.get_busy():
-            if _sus.is_set():
-                pygame.mixer.music.stop()
-                break
-            pygame.time.wait(50)
-        pygame.mixer.music.unload()
+        if os.path.getsize(yol) == 0:
+            raise RuntimeError('edge-tts boş ses döndürdü')
+        cal(yol, _sus)
     finally:
         os.remove(yol)
 
 
+def _piper_konus(metin: str) -> None:
+    """Local Turkish voice, sentence by sentence: the next sentence is synthesized
+    while the current one plays, so the first words come out quickly."""
+    from jarvis_core import konusma
+    if not konusma.piper_hazir():
+        raise RuntimeError('Piper ses modeli indirilmemiş (python -m jarvis_core.konusma --indir)')
+    cumleler = [c for c in re.split(r'(?<=[.!?…])\s+', metin.strip()) if c.strip()] or [metin]
+    kuyruk = queue.Queue(maxsize=2)
+
+    def uret():
+        for cumle in cumleler:
+            if _sus.is_set():
+                break
+            try:
+                kuyruk.put(konusma.sentezle_dosyaya(cumle))
+            except Exception as e:
+                kuyruk.put(e)
+                return
+        kuyruk.put(None)
+
+    threading.Thread(target=uret, daemon=True).start()
+    while True:
+        parca = kuyruk.get()
+        if parca is None:
+            return
+        if isinstance(parca, Exception):
+            raise parca
+        try:
+            if not _sus.is_set():
+                konusma.cal(parca, _sus)
+        finally:
+            os.remove(parca)
+
+
 def _yerel_konus(metin: str) -> None:
+    """Windows SAPI - only with a Turkish voice. An English voice reading Turkish
+    is what made JARVIS sound mixed and unclear, so that is never used."""
     global _pyttsx
     import pyttsx3
 
     if _pyttsx is None:
-        _pyttsx = pyttsx3.init()
-        for v in _pyttsx.getProperty('voices'):
+        motor = pyttsx3.init()
+        for v in motor.getProperty('voices'):
             kimlik = f'{v.id} {v.name}'.lower()
             if 'turk' in kimlik or 'tr-tr' in kimlik or 'tolga' in kimlik:
-                _pyttsx.setProperty('voice', v.id)
+                motor.setProperty('voice', v.id)
+                _pyttsx = motor
                 break
+        else:
+            raise RuntimeError('Windows\'ta Türkçe ses yok')
     _pyttsx.say(metin)
     _pyttsx.runAndWait()
 
@@ -75,18 +110,24 @@ def sustur() -> None:
             pass
 
 
+MOTORLAR = {'piper': _piper_konus, 'edge': _edge_konus, 'windows': _yerel_konus}
+
+
 def konus(metin: str) -> None:
     print(f'JARVIS: {metin}')
+    tercih = os.getenv('JARVIS_TTS', 'piper').lower()
+    sira = [tercih] + [m for m in ('piper', 'edge', 'windows') if m != tercih]
     with _kilit:
         _sus.clear()
-        try:
-            _edge_konus(metin)
-        except Exception:
-            # No internet or no audio output for edge-tts: use the offline voice.
+        for ad in sira:
+            if ad not in MOTORLAR:
+                continue
             try:
-                _yerel_konus(metin)
+                MOTORLAR[ad](metin)
+                return
             except Exception as e:
-                print(f'(ses çıkışı yok: {e})')
+                print(f'(ses motoru "{ad}" kullanılamadı: {e})')
+        print('(ses çıkışı yok)')
 
 
 def dinle() -> str:

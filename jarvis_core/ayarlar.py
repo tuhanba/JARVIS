@@ -23,6 +23,8 @@ class Ayarlar:
     tek_model: bool = field(default_factory=lambda: os.getenv('OLLAMA_TEK_MODEL', '1') == '1')
     baglam: int = field(default_factory=lambda: _int('OLLAMA_BAGLAM', 16384))
     dusunme: bool = field(default_factory=lambda: os.getenv('YZ_DUSUNME', '0') == '1')
+    # How long Ollama keeps the model in memory after the last request ('5m', '30m', '0').
+    model_bekleme: str = field(default_factory=lambda: os.getenv('OLLAMA_MODEL_BEKLEME', '30m'))
     llm_zaman_asimi: int = field(default_factory=lambda: _int('OLLAMA_ZAMAN_ASIMI', 300))
     # Task budgets
     max_adim: int = field(default_factory=lambda: _int('GOREV_MAX_ADIM', 20))

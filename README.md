@@ -28,6 +28,15 @@ Son komut masaüstüne **JARVIS** simgesi koyar. Çift tıklayınca JARVIS panel
 Diğer giriş noktaları: `python -m jarvis_core.saglik` (donanım/Ollama raporu),
 `python -m jarvis_core` (konsol), `python jarvis.py` (yalnız ses).
 
+## Ses
+
+Varsayılan ses bilgisayarda çalışan Türkçe Piper sesidir (internet gerekmez). İlk açılışta model bir kez
+indirilir (yaklaşık 63 MB); elle indirmek ve denemek için: `python -m jarvis_core.konusma`.
+Üstüne JARVIS efekti uygulanır (biraz daha kalın, net ve hafif metalik). `.env` içinden ayarlanır:
+`JARVIS_SES_EFEKT`, `JARVIS_SES_PERDE`, `JARVIS_SES_HIZ`. Çevrimiçi Microsoft sesi için `JARVIS_TTS=edge`.
+İngilizce bir Windows sesi Türkçe metni okumaz; Türkçe ses yoksa JARVIS susar ve yazıyla cevap verir.
+Ses modeli: Piper `tr_TR-dfki-medium`, lisansı CC BY-NC-SA 4.0 (kişisel, ticari olmayan kullanım).
+
 ## Panel
 
 - Ortadaki HUD durumu renkle gösterir: camgöbeği hazır, yeşil dinliyor, amber düşünüyor/çalışıyor, kırmızı hata.

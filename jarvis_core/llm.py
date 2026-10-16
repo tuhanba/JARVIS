@@ -1,7 +1,10 @@
 """Ollama client: streaming chat (so a cancel stops generation at once),
 health checks and clear Turkish errors. Ollama is the only backend."""
+import http.client
+import json
 import socket
 import threading
+from urllib.parse import urlparse
 
 import ollama
 import requests
@@ -30,6 +33,7 @@ class OllamaIstemci:
         self.a = ayarlar
         self.istemci = ollama.Client(host=ayarlar.ollama_adres, timeout=30)  # metadata calls only
         self._yuklu = None
+        self._yetenekler = {}
 
     # ------------------------------------------------------------- health
     def surum(self):
@@ -69,61 +73,103 @@ class OllamaIstemci:
                 pass
         self._yuklu = model
 
+    def _yetenek_onbellek(self, model: str) -> list:
+        if model not in self._yetenekler:
+            try:
+                self._yetenekler[model] = self.yetenekler(model)
+            except Exception:
+                return []
+        return self._yetenekler[model]
+
     @staticmethod
-    def _soketleri_kapat(istemci) -> None:
-        """Shut the HTTP socket down from another thread: unblocks a read that is
-        waiting for the first token, and Ollama stops generating on disconnect."""
+    def _kapat(baglanti) -> None:
+        """Shut the socket down and close it from another thread. The blocked read
+        returns at once and Ollama, seeing the client gone, stops generating -
+        otherwise the next request would queue behind the cancelled answer."""
+        soket = getattr(baglanti, 'sock', None)
+        if soket is not None:
+            try:
+                soket.shutdown(socket.SHUT_RDWR)
+            except OSError:
+                pass
+            try:
+                soket.close()
+            except OSError:
+                pass
         try:
-            for baglanti in list(istemci._client._transport._pool.connections):
-                soket = getattr(getattr(getattr(baglanti, '_connection', None), '_network_stream', None), '_sock', None)
-                if soket:
-                    try:
-                        soket.shutdown(socket.SHUT_RDWR)
-                    except OSError:
-                        pass
-        except AttributeError:
+            baglanti.close()
+        except Exception:
             pass
 
     def sohbet(self, mesajlar: list, araclar: list, iptal: threading.Event, is_turu: str = 'genel') -> dict:
         """Returns {'content': str, 'tool_calls': [{'function': {'name', 'arguments'}}]}.
 
-        The request runs in a worker thread so that a cancel takes effect at once,
-        even while the model is still loading or reading the prompt."""
+        Streams /api/chat over a connection we own (http.client), read in a worker
+        thread, so a cancel can close the socket immediately - even while the
+        model is still loading or reading the prompt."""
         model = self.a.model(is_turu)
         self._bosalt(model)
-        istemci = ollama.Client(host=self.a.ollama_adres, timeout=self.a.llm_zaman_asimi)
+        istek = {'model': model, 'messages': mesajlar, 'stream': True,
+                 'options': {'num_ctx': self.a.baglam}, 'keep_alive': self.a.model_bekleme}
+        if araclar:
+            istek['tools'] = araclar
+        if 'thinking' in self._yetenek_onbellek(model):
+            istek['think'] = self.a.dusunme      # thinking models default to "on" otherwise
+        adres = urlparse(self.a.ollama_adres)
+        baglanti = http.client.HTTPConnection(adres.hostname or '127.0.0.1', adres.port or 11434,
+                                              timeout=self.a.llm_zaman_asimi)
         kutu = {'icerik': [], 'cagrilar': []}
 
         def akit():
             try:
-                for parca in istemci.chat(model=model, messages=mesajlar, tools=araclar or None, stream=True,
-                                          think=self.a.dusunme, options={'num_ctx': self.a.baglam},
-                                          keep_alive='30m'):
-                    if parca.message.content:
-                        kutu['icerik'].append(parca.message.content)
-                    for c in parca.message.tool_calls or []:
-                        kutu['cagrilar'].append({'function': {'name': c.function.name,
-                                                              'arguments': dict(c.function.arguments or {})}})
+                baglanti.request('POST', '/api/chat', body=json.dumps(istek, ensure_ascii=False).encode('utf-8'),
+                                 headers={'Content-Type': 'application/json'})
+                yanit = baglanti.getresponse()
+                if yanit.status != 200:
+                    govde = yanit.read().decode('utf-8', 'replace')
+                    try:
+                        mesaj = json.loads(govde).get('error', govde)
+                    except ValueError:
+                        mesaj = govde
+                    kutu['hata'] = ('http', yanit.status, mesaj)
+                    return
+                for satir in yanit:
+                    if not satir.strip():
+                        continue
+                    parca = json.loads(satir)
+                    if parca.get('error'):
+                        kutu['hata'] = ('http', 500, parca['error'])
+                        return
+                    m = parca.get('message') or {}
+                    if m.get('content'):
+                        kutu['icerik'].append(m['content'])
+                    for c in m.get('tool_calls') or []:
+                        f = c.get('function') or {}
+                        kutu['cagrilar'].append({'function': {'name': f.get('name', ''),
+                                                              'arguments': f.get('arguments') or {}}})
+                    if parca.get('done'):
+                        break
             except Exception as e:
-                kutu['hata'] = e
+                kutu['hata'] = ('baglanti', 0, e)
+            finally:
+                if not iptal.is_set():
+                    baglanti.close()
 
         is_parcacigi = threading.Thread(target=akit, daemon=True)
         is_parcacigi.start()
         while is_parcacigi.is_alive():
             is_parcacigi.join(0.1)
             if iptal.is_set():
-                self._soketleri_kapat(istemci)
+                self._kapat(baglanti)
                 raise Iptal()
-        e = kutu.get('hata')
-        if e is not None:
-            if isinstance(e, ollama.ResponseError):
-                if e.status_code == 404:
+        if 'hata' in kutu:
+            tur, kod, ayrinti = kutu['hata']
+            if tur == 'http':
+                if kod == 404:
                     raise OllamaHatasi(f'"{model}" modeli yüklü değil. Komut satırında: ollama pull {model}')
-                raise OllamaHatasi(ollama_hata_aciklamasi(e.error))
-            ad = e.__class__.__name__
-            if 'Timeout' in ad:
+                raise OllamaHatasi(ollama_hata_aciklamasi(str(ayrinti)))
+            ad = ayrinti.__class__.__name__
+            if 'timeout' in ad.lower():
                 raise OllamaHatasi(f'Ollama {self.a.llm_zaman_asimi} saniyede yanıt vermedi.')
-            if 'Connect' in ad or isinstance(e, (ConnectionError, OSError)):
-                raise OllamaHatasi('Ollama\'ya bağlanılamadı. Ollama açık mı?')
-            raise OllamaHatasi(f'Ollama ile iletişim hatası: {ad}')
+            raise OllamaHatasi(f'Ollama\'ya bağlanılamadı ({ad}). Ollama açık mı?')
         return {'content': ''.join(kutu['icerik']), 'tool_calls': kutu['cagrilar']}

@@ -1,9 +1,11 @@
 # Voice in / out
 SpeechRecognition>=3.10
 PyAudio>=0.2.13              # Linux: apt install portaudio19-dev first
-edge-tts>=6.1                # natural Turkish voice (needs internet)
-pygame>=2.5                  # plays the edge-tts audio
-pyttsx3>=2.90                # offline fallback voice (Linux: apt install espeak-ng)
+piper-tts>=1.2               # local Turkish voice (default); model downloaded on first run
+numpy>=1.24                  # JARVIS voice effect
+pygame>=2.5                  # audio playback
+edge-tts>=6.1                # optional online voice (JARVIS_TTS=edge)
+pyttsx3>=2.90                # only used if Windows has a Turkish voice
 
 # AI: local Ollama only (no cloud fallback)
 ollama>=0.5

@@ -49,7 +49,9 @@ class Panel:
         self.dinleyiciler = []                    # one queue per open SSE stream
         self.kilit = threading.Lock()
         self.mesgul = threading.Event()           # a task is running
+        self.gorev_no = 0
         self.konusuyor = threading.Event()
+        self.konusma_kuyrugu = queue.Queue()
         self.onay_kutusu = None                   # {'olay': Event, 'cevap': bool}
         self.girdi_bekleyen = None                # follow-up question from a fast command
         self.ses_acik = sesli
@@ -99,17 +101,36 @@ class Panel:
 
     # ------------------------------------------------------------- speech out
     def soyle(self, metin: str, durum: str = '') -> None:
+        """Show the answer now and queue it for speech. Never blocks the task, so a
+        long sentence being spoken cannot keep the next command waiting."""
         self.yayinla('jarvis', {'metin': _gorunur(metin), 'durum': durum})
         metin = _seslendirilebilir(metin)
         if self.ses_acik and metin:
+            self.konusma_kuyrugu.put(metin)
+
+    def _konusma_dongusu(self) -> None:
+        while True:
+            metin = self.konusma_kuyrugu.get()
             self.konusuyor.set()
-            onceki = self.durum
-            self.durum_ayarla('konusuyor')
+            if not self.mesgul.is_set():
+                self.durum_ayarla('konusuyor')
             try:
                 self.ses.konus(metin)
+            except Exception as e:
+                print(f'konuşma hatası: {e!r}')
             finally:
                 self.konusuyor.clear()
-                self.durum_ayarla(onceki if onceki != 'konusuyor' else 'hazir')
+                if self.konusma_kuyrugu.empty() and not self.mesgul.is_set():
+                    self.durum_ayarla('dinliyor' if self.surekli_dinleme else 'hazir')
+
+    def sesi_kes(self) -> None:
+        """Drop queued sentences and stop the one being spoken."""
+        try:
+            while True:
+                self.konusma_kuyrugu.get_nowait()
+        except queue.Empty:
+            pass
+        self.ses.sustur()
 
     # ------------------------------------------------------------- questions from tools
     def _onay_iste(self, soru: str) -> bool:
@@ -160,12 +181,14 @@ class Panel:
                 return 'iptal'
             self.yayinla('bilgi', {'metin': 'Bir görev sürüyor. Durdurmak için "dur" deyin veya DURDUR\'a basın.'})
             return 'mesgul'
+        self.sesi_kes()
         self.yayinla('kullanici', {'metin': metin, 'kaynak': kaynak})
         self.mesgul.set()
-        threading.Thread(target=self._isle, args=(metin,), daemon=True).start()
+        self.gorev_no += 1
+        threading.Thread(target=self._isle, args=(metin, self.gorev_no), daemon=True).start()
         return 'basladi'
 
-    def _isle(self, metin: str) -> None:
+    def _isle(self, metin: str, no: int = 0) -> None:
         t0 = time.time()
         try:
             self.durum_ayarla('dusunuyor')
@@ -194,16 +217,35 @@ class Panel:
             self.yayinla('gorev_bitti', {'durum': 'hata', 'sure': time.time() - t0})
             self.soyle(f'Beklenmeyen bir hata oluştu: {e}', 'hata')
         finally:
+            if no != self.gorev_no:
+                return      # released by the stop watchdog; a newer task owns the panel now
             self.mesgul.clear()
             if self.durum not in ('konusuyor',):
                 self.durum_ayarla('dinliyor' if self.surekli_dinleme else 'hazir')
 
     def dur(self) -> None:
         self.motor.iptal_et()
-        self.ses.sustur()
+        self.sesi_kes()
         if self.onay_kutusu:
             self.onay_cevapla(False)
+        if self.girdi_bekleyen:
+            self.girdi_bekleyen['olay'].set()
         self.yayinla('bilgi', {'metin': 'Durduruldu.'})
+        threading.Thread(target=self._dur_bekcisi, daemon=True).start()
+
+    def _dur_bekcisi(self) -> None:
+        """If the task thread has not let go 4 s after a stop (a stuck tool, a hung
+        network call), release the panel anyway so new commands are accepted."""
+        bitis = time.time() + 4
+        while time.time() < bitis:
+            if not self.mesgul.is_set():
+                return
+            time.sleep(0.1)
+        self.gorev_no += 1          # the stuck thread's result is ignored from now on
+        self.mesgul.clear()
+        self.durum_ayarla('dinliyor' if self.surekli_dinleme else 'hazir')
+        self.yayinla('gorev_bitti', {'durum': 'iptal', 'sure': 0})
+        self.yayinla('bilgi', {'metin': 'Görev zorla bırakıldı; yeni komut verebilirsiniz.'})
 
     # ------------------------------------------------------------- AI / health
     def _ai_kontrol(self) -> None:
@@ -318,11 +360,10 @@ class Panel:
             elif UYANDIRMA.search(metin):
                 istek = UYANDIRMA.sub('', metin, count=1).strip()
                 if not istek:
-                    self.yayinla('jarvis', {'metin': 'Efendim?'})
-                    if self.ses_acik:
-                        self.konusuyor.set()
-                        self.ses.konus('Efendim?')
-                        self.konusuyor.clear()
+                    self.soyle('Efendim?')
+                    time.sleep(0.2)
+                    while self.konusuyor.is_set() or not self.konusma_kuyrugu.empty():
+                        time.sleep(0.05)
                     istek = self.ses.dinle()
                 if istek:
                     self.komut(istek, kaynak='ses')
@@ -337,7 +378,31 @@ class Panel:
                            for g in self.motor.depo.gorevler(15)],
                 'onay': None}
 
+    def _ses_modeli_hazirla(self) -> None:
+        from .. import konusma
+        if os.getenv('JARVIS_TTS', 'piper').lower() != 'piper':
+            return
+        if not konusma.piper_hazir():
+            self.yayinla('bilgi', {'metin': 'Türkçe ses modeli indiriliyor (yaklaşık 63 MB, bir kez)...'})
+            son = {'y': -1}
+
+            def ilerleme(m):
+                y = int(re.sub(r'\D', '', m) or 0) // 25
+                if y != son['y']:
+                    son['y'] = y
+                    self.yayinla('bilgi', {'metin': m})
+            if not konusma.piper_indir(ilerleme):
+                self.yayinla('bilgi', {'metin': 'Ses modeli indirilemedi; çevrimiçi ses kullanılacak.'})
+                return
+            self.yayinla('bilgi', {'metin': 'Türkçe ses modeli hazır.'})
+        try:
+            konusma._piper_ses()      # load once now so the first answer is not delayed
+        except Exception as e:
+            print(f'Piper yüklenemedi: {e!r}')
+
     def baslat_arka_plan(self) -> None:
+        threading.Thread(target=self._konusma_dongusu, daemon=True).start()
+        threading.Thread(target=self._ses_modeli_hazirla, daemon=True).start()
         threading.Thread(target=self._telemetri_dongusu, daemon=True).start()
         threading.Thread(target=self._ai_kontrol, daemon=True).start()
         threading.Thread(target=self._mikrofon_kontrol, daemon=True).start()

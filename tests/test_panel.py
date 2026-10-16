@@ -79,3 +79,66 @@ def test_onay_sesle_ya_da_yaziyla_reddedilebilir(panel):
     panel.komut('hayır')
     t.join(5)
     assert sonuc['c'] is False
+
+
+class _YavasMotor:
+    """Stands in for Motor.calistir: waits for a cancel (or ignores it if inatci)."""
+
+    def __init__(self, motor, inatci=False):
+        self.motor, self.inatci = motor, inatci
+
+    def __call__(self, metin):
+        from jarvis_core.motor import GorevSonucu
+        if metin == 'hızlı':
+            return GorevSonucu('x2', 'tamamlandi', 'Bitti.')
+        bitis = time.time() + 30
+        while time.time() < bitis:
+            if self.motor.iptal.is_set() and not self.inatci:
+                return GorevSonucu('x1', 'iptal', 'Tamam efendim, durdurdum.')
+            time.sleep(0.05)
+        return GorevSonucu('x1', 'tamamlandi', 'geç kalan sonuç')
+
+
+def _gorev_bitene_kadar(p, sure=10):
+    bitis = time.time() + sure
+    while p.mesgul.is_set() and time.time() < bitis:
+        time.sleep(0.05)
+    return not p.mesgul.is_set()
+
+
+def test_durdurdan_sonra_yeni_komut_kabul_edilir(panel, monkeypatch):
+    panel.ai_hazir = True
+    monkeypatch.setattr(panel.motor, 'calistir', _YavasMotor(panel.motor))
+    panel.komut('uzun bir iş yap')
+    time.sleep(0.3)
+    t0 = time.time()
+    panel.komut('dur')
+    assert _gorev_bitene_kadar(panel, 3), 'durdurduktan sonra panel serbest kalmadı'
+    assert time.time() - t0 < 1.5
+    assert panel.komut('hızlı') == 'basladi'
+    assert _gorev_bitene_kadar(panel, 3)
+
+
+def test_takilan_gorev_bekci_ile_birakilir_ve_yeni_gorevi_bozmaz(panel, monkeypatch):
+    panel.ai_hazir = True
+    yavas = _YavasMotor(panel.motor, inatci=True)
+    monkeypatch.setattr(panel.motor, 'calistir', yavas)
+    panel.komut('uzun bir iş yap')
+    time.sleep(0.3)
+    panel.dur()
+    assert _gorev_bitene_kadar(panel, 6), 'bekçi paneli serbest bırakmadı'
+    assert panel.komut('hızlı') == 'basladi'
+
+
+def test_konusma_gorevi_bekletmez(panel, monkeypatch):
+    panel.ses_acik = True
+    konusulan = []
+    monkeypatch.setattr(panel.ses, 'konus', lambda m: (konusulan.append(m), time.sleep(3)))
+    threading.Thread(target=panel._konusma_dongusu, daemon=True).start()
+    t0 = time.time()
+    panel.komut('Saat kaç')
+    assert _gorev_bitene_kadar(panel, 2) and time.time() - t0 < 1.5   # done while still talking
+    time.sleep(0.3)
+    assert konusulan and panel.konusuyor.is_set()
+    panel.komut('Saat kaç')                                            # new command cuts the speech
+    assert panel.konusma_kuyrugu.qsize() <= 1
