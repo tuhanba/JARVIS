@@ -43,7 +43,11 @@ def main() -> None:
     if beyin.aktif:
         print(f'Yapay zeka: {beyin.ad}')
     else:
-        print('Not: Ollama çalışmıyor ve GEMINI_API_KEY yok; yapay zeka kapalı, yalnız hazır komutlar çalışır.')
+        print('Not: yapay zeka kapalı, yalnız hazır komutlar çalışır. Sorunu görmek için: python -m jarvis_core.saglik')
+    from jarvis_core.acil import acil_durdurma_kur
+    kisayol = acil_durdurma_kur(beyin.iptal)
+    if kisayol:
+        print(f'Acil durdurma: {kisayol}')
 
     selamla()
     while True:

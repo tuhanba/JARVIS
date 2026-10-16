@@ -5,10 +5,10 @@ edge-tts>=6.1                # natural Turkish voice (needs internet)
 pygame>=2.5                  # plays the edge-tts audio
 pyttsx3>=2.90                # offline fallback voice (Linux: apt install espeak-ng)
 
-# AI brain: local Ollama (unlimited) and/or free Gemini API
+# AI: local Ollama only (no cloud fallback)
 ollama>=0.5
-google-genai>=1.0
 python-dotenv>=1.0
+jsonschema>=4.0              # tool argument validation
 ddgs>=9.0                    # web search tool
 
 # Computer control
@@ -27,3 +27,8 @@ pytubefix>=6.0               # youtube_downloader.py
 # Windows-only
 comtypes>=1.1.10; sys_platform == "win32"
 pywin32>=303; sys_platform == "win32"
+pywinauto>=0.6.8; sys_platform == "win32"   # read text back from windows (UI Automation)
+keyboard>=0.13.5; sys_platform == "win32"   # global emergency-stop hotkey
+
+# Tests
+pytest>=8.0

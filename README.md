@@ -1,21 +1,35 @@
 # JARVIS — Türkçe sesli asistan
 
-Türkçe dinler, Türkçe konuşur, bilgisayarınızı yönetir. Yapay zekası **Ollama** ile
-sizin bilgisayarınızda çalışır: ücretsiz ve sınırsız. İnternette arama yapabilir,
-ekranınızı görebilir, dosyaları bulup taşıyabilir, PowerShell ve Python çalıştırabilir,
-söylediklerinizi kalıcı olarak hatırlar. Ollama yoksa ücretsiz **Gemini**'yi kullanır.
+Türkçe dinler, Türkçe konuşur ve Windows bilgisayarınızda gerçek işler yapar. Yapay zekası
+**Ollama** ile tamamen sizin bilgisayarınızda çalışır; buluta veri gönderilmez.
 Kamera kullanılmaz.
+
+İstekler bir **görev motorundan** geçer: model bir plan yapar, araçları çağırır, her adımın
+sonucunu gözlemler ve doğrular. "Tamamlandı" yalnızca sonuç gerçekten görüldüğünde söylenir
+(dosya diskte, uygulama süreç/pencere olarak açık). Her adım `veri/jarvis.db` içine kaydedilir;
+yarıda kalan görev yeniden başlatmada sürdürülebilir ve yapılmış işlemler tekrarlanmaz.
 
 ## Kurulum (Windows)
 
 1. [Python 3.12](https://www.python.org/downloads/) kurun ("Add Python to PATH" işaretli).
-2. Bu klasörde **`kur.bat`** dosyasına çift tıklayın. Python paketlerini, Ollama'yı ve
-   yapay zeka modelini (birkaç GB) indirir.
-3. **`baslat.bat`** (sesli) veya **`yazarak_baslat.bat`** (klavyeyle) ile başlatın.
+2. **`kur.bat`**: Python paketlerini, Ollama'yı ve `.env` içindeki modeli indirir.
+3. **`saglik.bat`**: donanım, Ollama, modeller, mikrofon ve internet raporunu gösterir.
+4. Başlatma:
+   - **`baslat.bat`** sesli asistan, **`yazarak_baslat.bat`** klavyeyle,
+   - **`gorev_motoru.bat`** görev motoru konsolu (`/yardim`, `/gorevler`, `/izinler`, `/devam`, `/geri-al`).
 
-Bilgisayarınız zayıfsa (8 GB RAM) `.env` dosyasında `OLLAMA_MODEL=qwen3.5:4b` yapıp
-`kur.bat`'ı tekrar çalıştırın. İsterseniz yedek olarak https://aistudio.google.com/apikey
-adresinden aldığınız Gemini anahtarını `.env` içindeki `GEMINI_API_KEY=` satırına yazın.
+Bilgisayarınız zayıfsa `.env` dosyasında `OLLAMA_MODEL=qwen3.5:4b` yapıp `kur.bat`'ı tekrar çalıştırın.
+
+## Güvenlik ve izinler
+
+- Okuma serbest. Belgeler, Masaüstü, İndirilenler, Resimler, Müzik, Videolar içine yazma serbest;
+  başka yerlere yazma onay ister.
+- Silme (Geri Dönüşüm Kutusu'na) her zaman onay ister; isterseniz klasör bazında izin verebilirsiniz
+  (`/izin-ver cop_kutusuna_gonder İndirilenler`). Dışarıya mesaj ve sistem işlemleri her seferinde sorulur.
+- Kabuk (PowerShell/cmd) yoktur. Programlar argüman listesiyle çalışır; izinli liste dışındakiler sorulur.
+- Web sayfası, dosya veya arama sonucundaki talimatlar komut sayılmaz; bunlar okunduktan sonra yapılan
+  her değişiklik ayrıca onay ister.
+- Parola/token benzeri metinler kayıtlarda maskelenir. Acil durdurma: **Ctrl+Alt+End** (görev çalışırken "dur" da olur).
 
 ## Örnek komutlar
 

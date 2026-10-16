@@ -1,5 +1,5 @@
-"""Fixed Turkish voice commands. Anything not matched here goes to Gemini
-(when an API key is set), which saves the small free-tier quota."""
+"""Fixed Turkish voice commands. Anything not matched here goes to the task engine
+(local Ollama), so quick commands answer instantly without the model."""
 import random
 import re
 
@@ -54,7 +54,7 @@ def isle(metin: str, beyin) -> bool:
         konus('Görüşürüz efendim.')
         return False
 
-    cevap = _yerel_komut(k, metin, beyin.aktif)
+    cevap = _yerel_komut(k, metin, beyin)
     if cevap is None:
         cevap = beyin.sor(metin) if beyin.aktif else (
             'Bunu anlamadım efendim. Neler yapabildiğimi öğrenmek için "neler yapabilirsin" deyin.')
@@ -63,21 +63,33 @@ def isle(metin: str, beyin) -> bool:
     return True
 
 
-def _yerel_komut(k: str, ham: str, ai_var: bool = False):
+def _yerel_komut(k: str, ham: str, beyin=None):
     """Return the spoken answer, or None if no fixed command matched."""
+    ai_var = bool(getattr(beyin, 'aktif', False))
+    depo = getattr(beyin, 'depo', None)
     if ai_var and re.search(r'ekran(a|ı|da|daki)\b.*(bak|gör|ne var|oku|açıkla)|ekranda ne', k):
         return None  # the AI answers with its ekrani_gor tool
     # Long-term memory is saved here, not left to the model: small models often
-    # say "I'll remember" without calling the tool.
-    if re.search(r'\b(unutma|aklında tut|aklında olsun|hatırla ki)\b', k) and 'hatırlat' not in k:
-        bilgi = re.sub(r'[,.\s]*\b(bunu |şunu )?(unutma|aklında tut|aklında olsun|hatırla ki)\b[,.!\s]*', ' ',
-                       ham, flags=re.IGNORECASE).strip(' ,.')
-        if bilgi:
-            sistem.hafizaya_kaydet(bilgi)
-            return 'Aklımda tutacağım efendim.'
-    if re.search(r'(benim hakkımda|hakkımda) (ne biliyorsun|neler biliyorsun)', k):
-        hafiza = sistem.hafizayi_yukle()
-        return ('Bildiklerim: ' + '. '.join(hafiza)) if hafiza else 'Henüz sizinle ilgili bir şey kaydetmedim.'
+    # say "I'll remember" without calling the tool. Source = the user's own words.
+    if depo is not None:
+        if re.search(r'\b(unutma|aklında tut|aklında olsun|hatırla ki|bunu hatırla)\b', k) and 'hatırlat' not in k:
+            bilgi = re.sub(r'[,.\s]*\b(bunu |şunu )?(unutma|aklında tut|aklında olsun|hatırla ki|hatırla)\b[,.!:\s]*',
+                           ' ', ham, flags=re.IGNORECASE).strip(' ,.')
+            if bilgi:
+                depo.hafiza_ekle(bilgi, kaynak='kullanıcı (sesli)')
+                return 'Aklımda tutacağım efendim.'
+        unut = re.match(r'^(?:şunu |bunu )?unut[:\s]+(.+)$|^(.+?)\s+(?:bilgisini\s+)?unut$', k)
+        if unut:
+            adet = depo.hafiza_unut((unut.group(1) or unut.group(2)).strip())
+            return f'{adet} bilgiyi unuttum.' if adet else 'Böyle bir bilgi kayıtlı değil.'
+        if re.search(r'(benim hakkımda|hakkımda) (ne|neler) biliyorsun|hangi bilgileri (saklıyorsun|tutuyorsun)|'
+                     r'neleri hatırlıyorsun', k):
+            kayitlar = depo.hafiza()
+            if not kayitlar:
+                return 'Henüz sizinle ilgili bir şey kaydetmedim.'
+            import time
+            return 'Sakladıklarım: ' + '. '.join(
+                f"{k_['metin']} ({time.strftime('%d.%m.%Y', time.localtime(k_['tarih']))})" for k_ in kayitlar)
     if 'neler yapabilirsin' in k or k in ('yardım', 'komutlar'):
         return YARDIM
     if 'nasılsın' in k:

@@ -1,13 +1,12 @@
 """Everything JARVIS can do on the computer.
 
 Each public function returns a short Turkish sentence. They are used both
-by the fixed voice commands (komutlar.py) and as AI tools (beyin.py),
-so the docstrings are written for the model.
+by the fixed voice commands (komutlar.py) and wrapped as task-engine tools
+(jarvis_core/araclar).
 """
 import datetime
 import difflib
 import glob
-import json
 import os
 import re
 import subprocess
@@ -26,7 +25,6 @@ WIN = sys.platform == 'win32'
 MAC = sys.platform == 'darwin'
 PROJE = os.path.dirname(os.path.abspath(__file__))
 NOT_DOSYASI = os.path.join(PROJE, 'notlar.txt')
-HAFIZA_DOSYASI = os.path.join(PROJE, 'hafiza.json')
 
 # Spoken name stem -> what `start` launches on Windows.
 UYGULAMALAR = {
@@ -94,18 +92,6 @@ HAVA_KODLARI = {
     85: 'kar sağanağı', 86: 'yoğun kar sağanağı', 95: 'gök gürültülü fırtına',
     96: 'dolu ile fırtına', 99: 'dolu ile şiddetli fırtına',
 }
-
-# Shell commands that change or destroy things need a spoken "evet" first,
-# because a misheard sentence must never wipe files.
-_TEHLIKELI = re.compile(
-    r'\b(rm|del|erase|rd|rmdir|remove-item|ri|format|format-volume|diskpart|clear-disk|'
-    r'shutdown|restart-computer|stop-computer|reg|remove-itemproperty|set-itemproperty|'
-    r'cipher|bcdedit|takeown|icacls|mkfs|dd|kill|taskkill|stop-process|set-executionpolicy|'
-    r'move|move-item|mv|ren|rename-item|uninstall|winget|choco|net|sc|schtasks|'
-    r'new-service|set-service|disable|enable)\b',
-    re.IGNORECASE,
-)
-
 
 def _onay(soru: str) -> bool:
     if os.getenv('JARVIS_TAM_YETKI') == '1':
@@ -205,26 +191,6 @@ def uygulama_kapat(ad: str) -> str:
     else:
         p = subprocess.run(['pkill', '-f', surec.removesuffix('.exe')], capture_output=True, text=True)
     return f'{ad} kapatıldı.' if p.returncode == 0 else f'{ad} açık görünmüyor.'
-
-
-def calisan_uygulamalar() -> str:
-    """En çok bellek kullanan açık uygulamaları listeler."""
-    import psutil
-    surecler = []
-    for p in psutil.process_iter(['name', 'memory_info']):
-        try:
-            surecler.append((p.info['memory_info'].rss, p.info['name']))
-        except Exception:
-            pass
-    surecler.sort(reverse=True)
-    goruldu, satirlar = set(), []
-    for rss, isim in surecler:
-        if isim and isim not in goruldu:
-            goruldu.add(isim)
-            satirlar.append(f'{isim} ({rss // 2**20} MB)')
-        if len(satirlar) == 10:
-            break
-    return 'En çok bellek kullananlar: ' + ', '.join(satirlar)
 
 
 def youtube_indirici_ac() -> str:
@@ -400,86 +366,6 @@ def dosyalari_listele(klasor: str) -> str:
     adlar = [p.name + ('/' if p.is_dir() else '') for p in ogeler[:100]]
     ek = f' (ve {len(ogeler) - 100} öğe daha)' if len(ogeler) > 100 else ''
     return f'{yol} içinde {len(ogeler)} öğe: ' + ', '.join(adlar) + ek
-
-
-def dosya_ac(yol: str) -> str:
-    """Bir dosyayı varsayılan programıyla açar.
-
-    Args:
-        yol: Dosyanın tam yolu.
-    """
-    p = _klasor(yol)
-    if not p.exists():
-        return f'{yol} bulunamadı.'
-    _baslat(str(p))
-    return f'{p.name} açılıyor.'
-
-
-def dosya_ara(ad: str, klasor: str) -> str:
-    """Bir klasörün içinde (alt klasörler dahil) adı eşleşen dosyaları arar.
-
-    Args:
-        ad: Dosya adının bir parçası.
-        klasor: Aramanın başlayacağı klasör ('masaüstü', 'belgeler', 'ev' ya da tam yol).
-    """
-    kok = _klasor(klasor or 'ev')
-    bulunan = []
-    for dizin, _, dosyalar in os.walk(kok):
-        bulunan += [os.path.join(dizin, d) for d in dosyalar if ad.lower() in d.lower()]
-        if len(bulunan) >= 20:
-            break
-    return '\n'.join(bulunan[:20]) if bulunan else f'{kok} içinde {ad} bulunamadı.'
-
-
-def dosya_oku(yol: str) -> str:
-    """Bir metin dosyasının içeriğini okur (ilk 4000 karakter).
-
-    Args:
-        yol: Dosyanın tam yolu.
-    """
-    try:
-        return _klasor(yol).read_text(encoding='utf-8', errors='replace')[:4000]
-    except OSError as e:
-        return f'Dosya okunamadı: {e}'
-
-
-def dosya_yaz(yol: str, icerik: str) -> str:
-    """Bir metin dosyası oluşturur veya üzerine yazar.
-
-    Args:
-        yol: Dosyanın tam yolu.
-        icerik: Dosyaya yazılacak metin.
-    """
-    p = _klasor(yol)
-    if p.exists() and not _onay(f'{p.name} zaten var, üzerine yazayım mı?'):
-        return 'Dosyaya yazılmadı.'
-    p.parent.mkdir(parents=True, exist_ok=True)
-    p.write_text(icerik, encoding='utf-8')
-    return f'{p} kaydedildi.'
-
-
-# ---------------------------------------------------------------- shell
-
-def komut_calistir(komut: str) -> str:
-    """Bilgisayarda bir kabuk komutu çalıştırır (Windows'ta PowerShell) ve çıktısını döndürür.
-    Başka bir araç işi yapamıyorsa bunu kullan. Silme/taşıma/kapatma gibi komutlar için kullanıcıdan onay istenir.
-
-    Args:
-        komut: Çalıştırılacak komut, ör. 'Get-ChildItem $HOME\\Desktop'.
-    """
-    if _TEHLIKELI.search(komut) and not _onay(f'Şu komutu çalıştırayım mı: {komut}'):
-        return 'Kullanıcı onay vermedi, komut çalıştırılmadı.'
-    if WIN:
-        args = ['powershell', '-NoProfile', '-Command',
-                '[Console]::OutputEncoding=[Text.Encoding]::UTF8; ' + komut]
-    else:
-        args = ['bash', '-lc', komut]
-    try:
-        p = subprocess.run(args, capture_output=True, text=True, encoding='utf-8', errors='replace', timeout=120)
-    except subprocess.TimeoutExpired:
-        return 'Komut 120 saniyede bitmedi.'
-    cikti = (p.stdout + p.stderr).strip() or f'(çıktı yok, çıkış kodu {p.returncode})'
-    return cikti[:4000]
 
 
 # ---------------------------------------------------------------- system
@@ -661,231 +547,3 @@ def hatirlatici_kur(dakika: float, mesaj: str) -> str:
     t.start()
     zaman = f'{int(dakika * 60)} saniye' if dakika < 1 else f'{dakika:g} dakika'
     return f'Tamam, {zaman} sonra hatırlatacağım.'
-
-
-# ---------------------------------------------------------------- internet
-
-def internette_ara(sorgu: str) -> str:
-    """İnternette arama yapar ve ilk sonuçların başlık, özet ve adreslerini döndürür.
-    Güncel bilgi (haber, maç sonucu, fiyat, kişi, olay) gerektiren her soruda önce bunu kullan.
-
-    Args:
-        sorgu: Arama metni.
-    """
-    try:
-        from ddgs import DDGS
-        sonuclar = DDGS().text(sorgu, region='tr-tr', max_results=6)
-    except Exception as e:
-        return f'Arama yapılamadı: {e}'
-    if not sonuclar:
-        return 'Sonuç bulunamadı.'
-    return '\n'.join(f"- {r['title']}: {r['body']} ({r['href']})" for r in sonuclar)
-
-
-def web_sayfasi_oku(adres: str) -> str:
-    """Bir web sayfasını indirip düz metnini döndürür (ilk 5000 karakter).
-
-    Args:
-        adres: Sayfanın tam adresi (https://...).
-    """
-    from bs4 import BeautifulSoup
-    try:
-        r = requests.get(adres, timeout=12, headers={'User-Agent': 'Mozilla/5.0 JARVIS'})
-    except requests.RequestException as e:
-        return f'Sayfa açılamadı: {e}'
-    sayfa = BeautifulSoup(r.text, 'html.parser')
-    for etiket in sayfa(['script', 'style', 'nav', 'footer', 'header', 'noscript']):
-        etiket.decompose()
-    return re.sub(r'\n\s*\n+', '\n', sayfa.get_text('\n')).strip()[:5000]
-
-
-# ---------------------------------------------------------------- more files
-
-def dosya_sil(yol: str) -> str:
-    """Bir dosyayı veya klasörü Geri Dönüşüm Kutusu'na gönderir (onay ister, geri alınabilir).
-
-    Args:
-        yol: Silinecek dosya/klasörün tam yolu.
-    """
-    p = _klasor(yol)
-    if not p.exists():
-        return f'{yol} bulunamadı.'
-    if not _onay(f'{p.name} geri dönüşüm kutusuna gönderilsin mi?'):
-        return 'Silinmedi.'
-    from send2trash import send2trash
-    send2trash(str(p))
-    return f'{p.name} geri dönüşüm kutusuna gönderildi.'
-
-
-def dosya_tasi(kaynak: str, hedef: str) -> str:
-    """Bir dosyayı/klasörü başka yere taşır veya yeniden adlandırır.
-
-    Args:
-        kaynak: Taşınacak dosyanın tam yolu.
-        hedef: Yeni yol (klasör ya da yeni dosya adı).
-    """
-    import shutil
-    k, h = _klasor(kaynak), _klasor(hedef)
-    if not k.exists():
-        return f'{kaynak} bulunamadı.'
-    son = h / k.name if h.is_dir() else h
-    if son.exists() and not _onay(f'{son.name} zaten var, üzerine yazılsın mı?'):
-        return 'Taşınmadı.'
-    shutil.move(str(k), str(son))
-    return f'{k.name} taşındı: {son}'
-
-
-def dosya_kopyala(kaynak: str, hedef: str) -> str:
-    """Bir dosyayı/klasörü kopyalar.
-
-    Args:
-        kaynak: Kopyalanacak dosyanın tam yolu.
-        hedef: Hedef klasör veya dosya yolu.
-    """
-    import shutil
-    k, h = _klasor(kaynak), _klasor(hedef)
-    if not k.exists():
-        return f'{kaynak} bulunamadı.'
-    son = h / k.name if h.is_dir() else h
-    if k.is_dir():
-        shutil.copytree(k, son, dirs_exist_ok=True)
-    else:
-        shutil.copy2(k, son)
-    return f'{k.name} kopyalandı: {son}'
-
-
-def klasor_olustur(yol: str) -> str:
-    """Yeni bir klasör oluşturur.
-
-    Args:
-        yol: Klasörün tam yolu veya 'masaüstü/Yeni Klasör' gibi bir yol.
-    """
-    p = _klasor(yol)
-    p.mkdir(parents=True, exist_ok=True)
-    return f'{p} oluşturuldu.'
-
-
-# ---------------------------------------------------------------- code
-
-_TEHLIKELI_PY = re.compile(
-    r'\b(remove|unlink|rmtree|rmdir|system|popen|subprocess|move|rename|replace|'
-    r'send2trash|truncate|kill|shutdown|winreg)\b|open\([^)]*[\'"][wa]',
-)
-
-
-def python_calistir(kod: str) -> str:
-    """Python kodu çalıştırır ve çıktısını (print) döndürür. Hesaplama, veri işleme,
-    dosya dönüştürme, toplu işlem gibi işler için kullan. Dosya değiştiren kodlar için onay istenir.
-
-    Args:
-        kod: Çalıştırılacak tam Python kodu. Sonuçları print ile yazdır.
-    """
-    if _TEHLIKELI_PY.search(kod) and not _onay('Bu Python kodu bilgisayarda değişiklik yapacak. Çalıştırayım mı?'):
-        return 'Kullanıcı onay vermedi, kod çalıştırılmadı.'
-    try:
-        p = subprocess.run([sys.executable, '-c', kod], capture_output=True, text=True,
-                           encoding='utf-8', errors='replace', timeout=120, cwd=str(Path.home()),
-                           env={**os.environ, 'PYTHONIOENCODING': 'utf-8'})
-    except subprocess.TimeoutExpired:
-        return 'Kod 120 saniyede bitmedi.'
-    return ((p.stdout + p.stderr).strip() or '(çıktı yok)')[:4000]
-
-
-# ---------------------------------------------------------------- windows
-
-def pencereye_gec(baslik: str) -> str:
-    """Başlığında verilen metin geçen açık pencereyi öne getirir.
-
-    Args:
-        baslik: Pencere başlığının bir parçası (ör. 'Chrome', 'Word').
-    """
-    try:
-        import pygetwindow
-        pencereler = [w for w in pygetwindow.getWindowsWithTitle(baslik) if w.title]
-    except Exception:
-        return 'Pencere yönetimi bu sistemde desteklenmiyor.'
-    if not pencereler:
-        return f'{baslik} adlı bir pencere bulamadım.'
-    w = pencereler[0]
-    if w.isMinimized:
-        w.restore()
-    w.activate()
-    return f'{w.title} öne getirildi.'
-
-
-def acik_pencereler() -> str:
-    """Açık pencerelerin başlıklarını listeler."""
-    try:
-        import pygetwindow
-        basliklar = [t for t in pygetwindow.getAllTitles() if t.strip()]
-    except Exception:
-        return 'Pencere listesi bu sistemde alınamıyor.'
-    return 'Açık pencereler: ' + ', '.join(basliklar[:30])
-
-
-def panoya_kopyala(metin: str) -> str:
-    """Bir metni panoya kopyalar.
-
-    Args:
-        metin: Kopyalanacak metin.
-    """
-    import pyperclip
-    pyperclip.copy(metin)
-    return 'Panoya kopyalandı.'
-
-
-# ---------------------------------------------------------------- long-term memory
-
-def hafizayi_yukle() -> list:
-    try:
-        with open(HAFIZA_DOSYASI, encoding='utf-8') as f:
-            return json.load(f)
-    except (OSError, ValueError):
-        return []
-
-
-def hafizaya_kaydet(bilgi: str) -> str:
-    """Kullanıcı hakkında kalıcı olarak hatırlanacak bir bilgiyi kaydeder (adı, tercihleri,
-    önemli tarihler, sık kullandığı klasörler...). Kullanıcı 'unutma', 'hatırla' dediğinde
-    veya kendisi hakkında önemli bir şey söylediğinde kullan.
-
-    Args:
-        bilgi: Kısa ve net bir cümle, ör. 'Kullanıcının adı Batuhan.'
-    """
-    hafiza = hafizayi_yukle()
-    if bilgi not in hafiza:
-        hafiza.append(bilgi)
-        with open(HAFIZA_DOSYASI, 'w', encoding='utf-8') as f:
-            json.dump(hafiza, f, ensure_ascii=False, indent=1)
-    return 'Aklımda tutacağım.'
-
-
-def hafizadan_sil(bilgi: str) -> str:
-    """Kalıcı hafızadan, verilen metni içeren bilgileri siler.
-
-    Args:
-        bilgi: Silinecek bilginin bir parçası.
-    """
-    hafiza = hafizayi_yukle()
-    kalan = [h for h in hafiza if bilgi.lower() not in h.lower()]
-    with open(HAFIZA_DOSYASI, 'w', encoding='utf-8') as f:
-        json.dump(kalan, f, ensure_ascii=False, indent=1)
-    return f'{len(hafiza) - len(kalan)} bilgi unutuldu.'
-
-
-# Functions the AI may call on its own (beyin.py adds ekrani_gor).
-ARACLAR = [
-    uygulama_ac, uygulama_kapat, calisan_uygulamalar, youtube_indirici_ac,
-    web_sitesi_ac, google_ara, youtube_ara, youtube_cal, vikipedi, hava_durumu, haberler,
-    doviz_kuru, ip_adresi,
-    klasor_ac, dosyalari_listele, dosya_ac, dosya_ara, dosya_oku, dosya_yaz,
-    komut_calistir,
-    saat_tarih, sistem_durumu, ses_ayarla, parlaklik_ayarla, ekran_goruntusu_al,
-    masaustunu_goster, metin_yaz, tus_bas, panoyu_oku,
-    bilgisayari_kilitle, bilgisayari_kapat, yeniden_baslat, uyku_moduna_al,
-    not_al, notlari_oku, notlari_sil, hatirlatici_kur,
-    internette_ara, web_sayfasi_oku,
-    dosya_sil, dosya_tasi, dosya_kopyala, klasor_olustur,
-    python_calistir, pencereye_gec, acik_pencereler, panoya_kopyala,
-    hafizaya_kaydet, hafizadan_sil,
-]

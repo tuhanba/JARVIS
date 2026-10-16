@@ -143,3 +143,7 @@ cython_debug/
 # JARVIS personal data
 notlar.txt
 hafiza.json
+
+# JARVIS task engine data (tasks, permissions, backups)
+veri/
+*.tasindi
