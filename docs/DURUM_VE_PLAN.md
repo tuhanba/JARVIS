@@ -1,5 +1,9 @@
 # JARVIS — Durum raporu ve uygulama planı
 
+> **Tarihsel belge (Aşama 1, PR #3 öncesi).** Güncel plan, durum ve yetenek matrisi:
+> [JARVIS_MASTER_PLAN.md](JARVIS_MASTER_PLAN.md), [IMPLEMENTATION_STATUS.md](IMPLEMENTATION_STATUS.md),
+> [FEATURE_MATRIX.md](FEATURE_MATRIX.md). Aşağıdaki "birleşmedi / yapılmadı" ifadeleri o tarihe aittir.
+
 Tarih: 16.10.2026. Branch: `claude/sleepy-mccarthy-sy4p78` (main'e birleştirilmedi).
 
 ## 1. Başlangıç durumu (incelenen)

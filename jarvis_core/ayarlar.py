@@ -1,5 +1,6 @@
 """Settings, read from the environment / .env. Everything is overridable."""
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -30,8 +31,20 @@ class Ayarlar:
     tekrar_siniri: int = field(default_factory=lambda: _int('GOREV_TEKRAR_SINIRI', 3))
     veri_dizini: Path = field(default_factory=lambda: Path(os.getenv('JARVIS_VERI', PROJE / 'veri')))
 
+    # Share of num_ctx the prompt may use before old tool outputs are shortened.
+    baglam_payi: float = field(default_factory=lambda: float(os.getenv('JARVIS_BAGLAM_PAYI', '0.7')))
+
     def model(self, is_turu: str = 'genel') -> str:
         return {'kod': self.model_kod, 'gorsel': self.model_gorsel}.get(is_turu) or self.model_genel
+
+    @staticmethod
+    def is_turu(istek: str) -> str:
+        """'kod' for programming requests (routed to OLLAMA_MODEL_KOD when set), else 'genel'."""
+        k = (istek or '').replace('İ', 'i').lower()
+        if re.search(r'\b(kod|kodu|kodla|program yaz|script|betik|fonksiyon|python|javascript|typescript|html|css|'
+                     r'react|hata ayıkla|debug|derle|unit test|birim test|regex|sql|api yaz|site yap|web sitesi)', k):
+            return 'kod'
+        return 'genel'
 
     @property
     def veritabani(self) -> Path:

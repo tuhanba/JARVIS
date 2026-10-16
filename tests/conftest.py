@@ -17,6 +17,9 @@ def ev(tmp_path, monkeypatch):
     monkeypatch.setenv('USERPROFILE', str(ev))
     monkeypatch.setenv('JARVIS_VERI', str(tmp_path / 'veri'))
     monkeypatch.setattr(Path, 'home', classmethod(lambda cls: ev))
+    # On Windows the known-folder API would return the real Documents folder.
+    from jarvis_core import yollar
+    monkeypatch.setattr(yollar, '_windows_bilinen', lambda guid: None)
     return ev
 
 
@@ -26,13 +29,20 @@ class SahteLLM:
     def __init__(self, senaryo):
         self.senaryo = list(senaryo)
         self.gorulen = []
+        self.gorulen_araclar = []
+        self.is_turleri = []
 
-    def sohbet(self, mesajlar, araclar, iptal, is_turu='genel'):
+    def sohbet(self, mesajlar, araclar, iptal, is_turu='genel', akis=None):
         self.gorulen.append([dict(m) for m in mesajlar])
+        self.gorulen_araclar.append([a['function']['name'] for a in araclar])
+        self.is_turleri.append(is_turu)
         adim = self.senaryo.pop(0) if self.senaryo else 'Bitti.'
         if callable(adim):
             adim = adim(mesajlar)
         if isinstance(adim, str):
+            if akis:
+                for parca in adim.split(' '):
+                    akis(parca + ' ')
             return {'content': adim, 'tool_calls': []}
         return {'content': '', 'tool_calls': [{'function': {'name': ad, 'arguments': arg}} for ad, arg in adim]}
 

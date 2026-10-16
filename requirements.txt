@@ -1,9 +1,12 @@
-# Voice in / out
-SpeechRecognition>=3.10
+# Voice in / out (local by default; see jarvis_core/audio)
+SpeechRecognition>=3.10      # microphone capture
 PyAudio>=0.2.13              # Linux: apt install portaudio19-dev first
-edge-tts>=6.1                # natural Turkish voice (needs internet)
-pygame>=2.5                  # plays the edge-tts audio
-pyttsx3>=2.90                # offline fallback voice (Linux: apt install espeak-ng)
+faster-whisper>=1.1          # local speech recognition (Turkish, multilingual model)
+piper-tts>=1.2               # local Turkish neural voice (voice file: python -m jarvis_core.audio.kur)
+numpy>=1.24
+pygame>=2.5                  # audio playback
+pyttsx3>=2.90                # Windows SAPI voice (used only if a Turkish voice is installed)
+edge-tts>=6.1                # online voice, only with JARVIS_SES_CEVRIMICI=1
 
 # AI: local Ollama only (no cloud fallback)
 ollama>=0.5
@@ -32,3 +35,7 @@ keyboard>=0.13.5; sys_platform == "win32"   # global emergency-stop hotkey
 
 # Tests
 pytest>=8.0
+pypdf>=4.0                   # PDF text
+python-docx>=1.1
+openpyxl>=3.1
+tzdata>=2024.1               # time zones on Windows (reminders)

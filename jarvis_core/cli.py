@@ -9,7 +9,8 @@ import sys
 import threading
 import time
 
-from .motor import DURDUR, Motor
+from .motor import Motor
+from .niyet import cevap_coz, durdurma_mi
 
 YARDIM = """Komutlar:
   /gorevler              son görevler          /gorev <id>        görevin adımları
@@ -17,8 +18,10 @@ YARDIM = """Komutlar:
   /izinler               kuralları göster      /izin-ver <araç|*> [klasör]
   /izin-yasakla <araç|*> [klasör]              /izin-sil <no>
   /program-ekle <ad>     programı izinli yap   /hafiza            kalıcı hafıza
+  /ag-izin <host>        yerel ağ adresini web araçlarına aç
   /hatirla <bilgi>       hafızaya ekle         /unut <parça>      hafızadan sil
-  /saglik                sistem raporu         /cikis
+  /saglik                sistem raporu         /olcumler          model hız ölçümleri
+  /cikis
 Görev çalışırken "dur" yazın veya Ctrl+C'ye basın."""
 
 
@@ -39,13 +42,20 @@ class Arayuz:
         print(f'\n  ? {soru} (evet/hayır)')
         self.onay_bekliyor.set()
         try:
-            cevap = self.cevaplar.get(timeout=120)
-        except queue.Empty:
-            print('  (cevap gelmedi, hayır sayıldı)')
+            for _ in range(2):
+                try:
+                    cevap = self.cevaplar.get(timeout=120)
+                except queue.Empty:
+                    print('  (cevap gelmedi, hayır sayıldı)')
+                    return False
+                karar = cevap_coz(cevap)
+                if karar != 'belirsiz':
+                    return karar == 'evet'
+                print('  Anlaşılmadı: "evet" ya da "hayır" yazın.')
+            print('  (net cevap yok, hayır sayıldı)')
             return False
         finally:
             self.onay_bekliyor.clear()
-        return cevap.strip().lower() in ('e', 'evet', 'tamam', 'olur', 'onaylıyorum', 'yes', 'y')
 
     def _bildir(self, olay: str, veri: dict) -> None:
         if olay == 'arac':
@@ -81,6 +91,9 @@ class Arayuz:
                 print(f"  {g['id']}  {time.strftime('%d.%m %H:%M', time.localtime(g['olusturma']))}  "
                       f"{g['durum']:<14} {g['istek'][:60]}")
         elif k == '/gorev' and len(parca) > 1:
+            g = depo.gorev(parca[1])
+            if g:
+                print(f"  durum: {g['durum']}  kaynak: {g.get('kaynak') or 'model'}  sonuç: {(g['sonuc'] or '')[:160]}")
             for a in depo.adimlar(parca[1]):
                 print(f"  {a['sira']:>2}. {a['arac']} {a['argumanlar'][:80]} -> {a['durum']}"
                       f"{' (doğrulandı)' if a['dogrulandi'] else ''}: {(a['cikti'] or '')[:100]}")
@@ -93,10 +106,13 @@ class Arayuz:
         elif k == '/izinler':
             print('  İzinli programlar: ' + ', '.join(izin.veri['programlar']))
             for i, r in enumerate(izin.kurallar()):
-                print(f"  {i}. {r['karar']:<5} {r['arac']:<20} {r['klasor'] or '(her yer)'}  ({r['eklenme']})")
+                print(f"  {i}. {r['karar']:<5} {r['arac']:<20} {r['klasor'] or '(her yer)'}  ({r['eklenme']}"
+                      f"{', ' + r['kaynak'] if r.get('kaynak') and r['kaynak'] != 'kullanıcı' else ''})")
             if not izin.kurallar():
                 print('  Kural yok. Varsayılan: okuma serbest; Belgeler/Masaüstü/İndirilenler/Resimler/Müzik/Videolar '
                       'içine yazma serbest; silme, dış iletişim ve sistem işlemleri onay ister.')
+            print('  Değişmez sınırlar: kabuk programları (powershell, cmd...) hiç çalışmaz; terminale yazma ve dış '
+                  "iletişim her seferinde sorar; '*' kuralı yalnız dosya okuma/yazma/silmeyi kapsar.")
         elif k in ('/izin-ver', '/izin-yasakla') and len(parca) > 1:
             r = izin.kural_ekle(parca[1], parca[2] if len(parca) > 2 else '', 'izin' if k == '/izin-ver' else 'red')
             print(f"  Eklendi: {r['karar']} {r['arac']} {r['klasor'] or '(her yer)'}")
@@ -105,6 +121,9 @@ class Arayuz:
         elif k == '/program-ekle' and len(parca) > 1:
             izin.program_ekle(parca[1])
             print(f'  {parca[1]} izinli programlara eklendi.')
+        elif k == '/ag-izin' and len(parca) > 1:
+            izin.ag_izni_ekle(parca[1])
+            print(f'  {parca[1]} web araçlarına açıldı.')
         elif k == '/hafiza':
             for h in depo.hafiza():
                 print(f"  #{h['id']} [{time.strftime('%d.%m.%Y', time.localtime(h['tarih']))}, {h['kaynak']}] {h['metin']}")
@@ -113,6 +132,17 @@ class Arayuz:
             print('  Kaydedildi.')
         elif k == '/unut' and len(parca) > 1:
             print(f"  {depo.hafiza_unut(satir.split(maxsplit=1)[1])} kayıt unutuldu.")
+        elif k == '/olcumler':
+            ozet = depo.olcum_ozeti()
+            if not ozet:
+                print('  Henüz ölçüm yok (model ile bir görev çalıştırın).')
+            for o in ozet:
+                def f(x, b=''):
+                    return f'{x:.2f}{b}' if x is not None else '-'
+                print(f"  {o['model']:<22} {'SOĞUK' if o['soguk'] else 'sıcak':<6} {o['tur_sayisi']:>4} tur  "
+                      f"ilk parça {f(o['ort_ilk'], ' sn')}  tur {f(o['ort_toplam'], ' sn')}  "
+                      f"üretim {f(o['token_hizi'], ' tok/sn')}  prompt {f(o['prompt_hizi'], ' tok/sn')}  "
+                      f"araç şeması {f(o['ort_arac'])}")
         elif k == '/saglik':
             from .saglik import rapor, yazdir
             yazdir(rapor())
@@ -130,6 +160,9 @@ class Arayuz:
             print(f'UYARI: {e}')
         if self.motor.yarim_kalanlar:
             print(f'Yarıda kalan görevler: {", ".join(self.motor.yarim_kalanlar)}  (sürdürmek için /devam <id>)')
+        from .zamanlayici import Zamanlayici
+        Zamanlayici(self.motor.depo, teslim=lambda k: print(f"\n  ⏰ {k['metin_soz']}\nSen: ", end='', flush=True),
+                    sahip=self.motor.sahip).baslat()
         from .acil import acil_durdurma_kur
         kisayol = acil_durdurma_kur(self.motor.iptal_et)
         if kisayol:
@@ -153,7 +186,7 @@ class Arayuz:
                 self.cevaplar.put(satir)
                 continue
             if self.calisiyor():
-                if satir.lower() in DURDUR:
+                if durdurma_mi(satir):
                     self.motor.iptal_et()
                     print('  (iptal istendi)')
                 else:

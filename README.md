@@ -1,13 +1,25 @@
 # JARVIS — Türkçe sesli asistan
 
 Türkçe dinler, Türkçe konuşur ve Windows bilgisayarınızda gerçek işler yapar. Yapay zekası
-**Ollama** ile tamamen sizin bilgisayarınızda çalışır; buluta veri gönderilmez.
+**Ollama** ile sizin bilgisayarınızda çalışır; düşünme/görev kısmı için buluta veri gönderilmez.
 Kamera kullanılmaz.
+
+**Çevrimiçi kalan kısımlar (dürüst sınır):** ses tanıma şu an Google'ın çevrimiçi servisini
+(`recognize_google`), doğal Türkçe ses ise Microsoft Edge çevrimiçi sesini (`edge-tts`) kullanır;
+yani söyledikleriniz ve JARVIS'in cevapları bu servislere gider. İnternet yoksa ses çıkışı yerel
+`pyttsx3` sesine düşer. Hava, haber, döviz, web araması ve sayfa okuma doğal olarak internete çıkar.
+Tamamen yerel ses hattı (yerel STT/TTS, uyandırma sözcüğü) planlanmıştır; durum için
+[docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md).
 
 İstekler bir **görev motorundan** geçer: model bir plan yapar, araçları çağırır, her adımın
 sonucunu gözlemler ve doğrular. "Tamamlandı" yalnızca sonuç gerçekten görüldüğünde söylenir
 (dosya diskte, uygulama süreç/pencere olarak açık). Her adım `veri/jarvis.db` içine kaydedilir;
 yarıda kalan görev yeniden başlatmada sürdürülebilir ve yapılmış işlemler tekrarlanmaz.
+Hızlı sesli komutlar ("Chrome'u aç", "sesi aç") modeli beklemez ama aynı yürütücüden, aynı izin,
+onay ve kayıt kurallarıyla geçer; panelde görev olarak görünür.
+
+Geliştirme planı ve durum: [docs/JARVIS_MASTER_PLAN.md](docs/JARVIS_MASTER_PLAN.md),
+[docs/FEATURE_MATRIX.md](docs/FEATURE_MATRIX.md), [docs/IMPLEMENTATION_STATUS.md](docs/IMPLEMENTATION_STATUS.md).
 
 ## Kurulum (Windows)
 
@@ -42,11 +54,21 @@ Diğer giriş noktaları: `python -m jarvis_core.saglik` (donanım/Ollama raporu
 - Okuma serbest. Belgeler, Masaüstü, İndirilenler, Resimler, Müzik, Videolar içine yazma serbest;
   başka yerlere yazma onay ister.
 - Silme (Geri Dönüşüm Kutusu'na) her zaman onay ister; isterseniz klasör bazında izin verebilirsiniz
-  (`/izin-ver cop_kutusuna_gonder İndirilenler`). Dışarıya mesaj ve sistem işlemleri her seferinde sorulur.
-- Kabuk (PowerShell/cmd) yoktur. Programlar argüman listesiyle çalışır; izinli liste dışındakiler sorulur.
+  (`/izin-ver cop_kutusuna_gonder İndirilenler`). Dışarıya mesaj her seferinde sorulur; kapatma/yeniden
+  başlatma gibi sistem işlemleri varsayılan olarak sorulur, yalnız o aracı adıyla izinli yaparsanız sormaz
+  (`/izin-ver bilgisayari_kapat`).
+- Değişmez sınırlar: kabuk (PowerShell/cmd...) hiç çalışmaz, terminal penceresine yazma her seferinde sorar,
+  `*` kuralı yalnız dosya okuma/yazma/silmeyi kapsar. Programlar argüman listesiyle çalışır; izinli liste
+  dışındakiler sorulur. Bir izni panelde/konsolda kaldırdığınızda çalışan görevin bir sonraki adımında geçerli olur.
+- Onay cevabında olumsuzluk ve tereddüt önce gelir: "yapma", "onaylamıyorum", "olur mu bilmiyorum" evet
+  sayılmaz; belirsiz cevapta JARVIS işlem yapmaz, yeniden sorar. Paneldeki onay kartı tek bir işleme bağlıdır.
 - Web sayfası, dosya veya arama sonucundaki talimatlar komut sayılmaz; bunlar okunduktan sonra yapılan
   her değişiklik ayrıca onay ister.
-- Parola/token benzeri metinler kayıtlarda maskelenir. Acil durdurma: **Ctrl+Alt+End** (görev çalışırken "dur" da olur).
+- Parola/token benzeri metinler kayıtlarda, görev geçmişinde ve panel olaylarında maskelenir.
+- Acil durdurma: **Ctrl+Alt+End** (görev çalışırken "dur" da olur). Durdurma, görevin başlattığı
+  programları ve onların alt süreçlerini de kapatır; ilgisiz programlarınıza dokunmaz.
+- Üzerine yazılan dosyanın yedeği `veri/yedek/` altına benzersiz adla alınır; "son işlemi geri al",
+  dosyayı JARVIS'ten sonra siz değiştirdiyseniz üzerine yazmaz.
 
 ## Örnek komutlar
 
@@ -65,136 +87,17 @@ Diğer giriş noktaları: `python -m jarvis_core.saglik` (donanım/Ollama raporu
 | | "indirilenlerdeki resimleri Resimler klasörüne taşı", "benim doğum günüm 3 Mayıs, unutma" |
 | Çıkış | "görüşürüz" |
 
-Silme, taşıma, kapatma gibi geri alınamaz işlemlerden önce JARVIS "evet" onayı ister.
-`.env` içinde `JARVIS_TAM_YETKI=1` yaparsanız sormaz (yanlış duyulan bir cümle dosya silebilir — önerilmez).
+Silme, kapatma gibi işlemlerden önce JARVIS "evet" onayı ister.
+Eski `JARVIS_TAM_YETKI=1` ayarı artık her kontrolü kaldırmaz: ilk açılışta yalnız kapatma, yeniden başlatma,
+uyku ve notları silme için görünür izin kurallarına çevrilir (`/izinler` ile görüp `/izin-sil` ile
+kaldırabilirsiniz). Dikte ("şunu yaz: ...") hiçbir zaman komut olarak çalıştırılmaz.
 
 ---
 
-<h1 align="center">J.A.R.V.I.S </h1> 
+## Kaynak ve lisans
 
-<div align="center">
-  
-[![Welcome to my profile](https://img.shields.io/badge/Hello,Devs!-Welcome-blue.svg?style=flat&logo=github)](https://github.com/gauravsingh9356/J.A.R.V.I.S)
-[![Open Source Love](https://badges.frapsoft.com/os/v2/open-source.svg?v=103)](https://github.com/gauravsingh9356/J.A.R.V.I.S)
- [![GitHub issues](https://img.shields.io/github/issues/GauravSingh9356/J.A.R.V.I.S)](https://github.com/GauravSingh9356/J.A.R.V.I.S/issues)
-![Stars](https://img.shields.io/github/stars/gauravsingh9356/J.A.R.V.I.S?style=flat&logo=github)
-![Forks](https://img.shields.io/github/forks/gauravsingh9356/J.A.R.V.I.S?style=flat&logo=github)
-[![GitHub license](https://img.shields.io/github/license/GauravSingh9356/J.A.R.V.I.S)](https://github.com/GauravSingh9356/J.A.R.V.I.S/blob/master/LICENSE)
-  
-[![forthebadge made-with-python](http://ForTheBadge.com/images/badges/made-with-python.svg)](https://www.python.org/)
-
-  </div>
-
-
-
-<img src="jarvis1.jpg"/>
-
-### Requirements:
-
-<li>datetime</li>
-<li>os</li>
-<li> pyttsx3</li>
-<li> wikipedia</li>
-<li> speech_recognition </li>
-<li> webbrowser</li>
-<li> sys</li>
-<li> smtplib</li>
-<li>requests</li>
-<li>json</li>
-<li>defflib</li>
-<li>geocoder</li>
-<li>pyjokes</li>
-<li>psutil</li>
-<li> pyautogui</li>
-<li> opencv</li>
-
-<h2>Required Packages</h2>
-
-```
-pip install -r requirements.txt
-```
-
-> _ To install PyAudio on windows head over to https://www.lfd.uci.edu/~gohlke/pythonlibs/#pyaudio and download the .whl for your machine and run the installation as shown below, then install the remaining dependencies from the requirements.txt file. You may remove pyAduio from the requirements file if it interrupts your installation (its there for unix users)
-```bash
-pip install PyAudio‑0.2.11‑cp<version>‑cp<version>m‑win_amd<architecture>.whl
-```
-
-### On Ubuntu based Linux distribution you need to install the following packages, so that the code works:
-
-```bash
-sudo apt-get update
-sudo apt-get install espeak-ng portaudio19-dev tesseract-ocr python3-tk python3-dev scrot
-python3 -m venv venv            # needs a Python that has tkinter (python3-tk)
-source venv/bin/activate
-pip install -r requirements.txt
-python jarvis.py
-```
-
-### What it does...
-
-  <ul>
-   <li>Dynamic Authentication using Optical Face Recognition</li>
-<li>Send emails</li>
-  <li>Dynamic News Reporting at any time with api integration</li>
-  <li>Todo list generator, Yes it remembers all!</li> 
-<li>Open any website with just a voice command</li>
-<li>Plays Music</li>
-<li>Tells time</li>
-<li>Wikipedia powered AI</li>
-<li>Dictionary with Intelligent Sensing i.e. auto checking if spell mistake</li>
-<li>Weather Report such as temp, wind speed, humidity, weather description</li>
-<li>Latitude and longitude</li>
- <li>YouTube searching</li> 
- <li>Google Map searching</a>
- <li>YouTube Downloader, download any youtube video by just putting url of video</li>
- <li>Now Master can switch b/w J.A.R.V.I.S and F.R.I.D.A.Y, switch to female voice assistant</li>
-</ul>
-
-<table>
-  <tr>
-    <td><img src="images/Screenshot%20(138).png"/></td>
-      <td><img src="https://github.com/GauravSingh9356/J.A.R.V.I.S/blob/master/images/face-600x900.png"/></td>
-    
-
-</tr>
-<tr>
-<td><img src="images/email.jpg"/></td>
-<td><img src="https://github.com/GauravSingh9356/J.A.R.V.I.S/blob/master/images/maxresdefault.jpg"/></td>
-</tr>
-<td><img src="https://github.com/GauravSingh9356/J.A.R.V.I.S/blob/master/images/4-Best-Weather-Forecast-APIs-for-Development-of-Weather-Apps-624x304.jpeg"/></td>
-  <td><img src="https://github.com/GauravSingh9356/J.A.R.V.I.S/blob/master/images/maxresdefault%20(1).jpg"/></td>
-</tr>
-<tr>
-  <td><img src="canny.jpg"/>
-          </td>
-  <td><img src="ImgContor.jpg"/>
-          </td>
-</tr>
-</table>
-
-## Some Sneak peeks:
-
-<ul>
-  <li><h2> Jarvis, Are you there?</h2></li>
-  <li><h2> At your service, Sir</h2></li>
-  
-  <li><h2> Jarvis, What are today's news headlines? can you tell?</h2></li>
-  <li><h2>Ofcourse, Sir -> Then news headlines   Would you like to visit the news url?</h2></li>
-  
-  <li><h2> Search Youtube</h2></li>
-  <li><h2>What you want to search, Sir</h2></li>
-  <li><h2>Coding for kids</h2></li>
-  <li><h2> Opens youtube in browser with desired search query results </h2></li>
-  
-   <li><h2> Jarvis, Can you send email to Gaurav?</h2></li>
-  <li><h2>What I say sir, Sir</h2></li>
-   <li><h2>Gaurav is a good boy</h2></li>
-  <li><h2> Email is sent successfully, Sir</h2></li>
-  
-  # And so on....
-  
-<a href="https://techtalkswithgaurav.blogspot.com/2020/06/your-personal-assistant-jarvis.html" target="_blank">Read complete blog article</a>
-
-## Contribution:
-Thank you for your interest in contributing to our Repo! Pull requests are welcome. For fixing typos, please make a PR with your fixes. We are happy for every contribution.
-A lot can be done with this project. Core AI chatbot like functionality can be added. More python scripts can be associated. Pull requests for any such changes are accepted. Feel free to fork this project and make your own changes too.
+Bu proje [GauravSingh9356/J.A.R.V.I.S](https://github.com/GauravSingh9356/J.A.R.V.I.S) (MIT, © 2020
+GauravSingh9356) üzerine kurulmuştur; özgün lisans `LICENSE` dosyasında korunur. Özgün projenin İngilizce
+özellik listesi (e-posta gönderme, İngilizce komutlar, PyAudio 3.8 wheel kurulumu vb.) bu sürümün
+yeteneklerini yansıtmadığı için buradan kaldırıldı; geçmiş için özgün depoya bakın. Üçüncü taraf
+bileşenler ve referans projeler: [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).

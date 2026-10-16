@@ -5,11 +5,19 @@ from .temel import Sonuc, arac, metin
 
 @arac('hafizaya_kaydet', 'Kullanıcının açıkça hatırlanmasını istediği bir bilgiyi kalıcı hafızaya kaydeder.',
       {'bilgi': metin('Kısa, net bir cümle, ör. "Kullanıcının adı Batuhan."'),
-       'tur': {'type': 'string', 'enum': ['tercih', 'kisisel', 'proje'], 'description': 'Bilgi türü'}},
+       'tur': {'type': 'string', 'enum': ['tercih', 'kisisel', 'proje'], 'description': 'Bilgi türü'},
+       'konu': metin('Kısa konu anahtarı, ör. "kullanıcının adı", "cevap uzunluğu tercihi". Aynı konudaki eski '
+                     'bilginin yerine geçer.')},
       ['bilgi', 'tur'], risk=YAZMA, yan_etki=True)
-def hafizaya_kaydet(baglam, bilgi, tur):
-    kayit = baglam.depo.hafiza_ekle(bilgi, kaynak='görev sırasında yapay zeka', tur=tur)
-    return Sonuc(True, f'Kaydedildi (#{kayit}).', dogrulandi=True)
+def hafizaya_kaydet(baglam, bilgi, tur, konu=''):
+    # Source comes from the input path, never from the model: a fast command is the user's own words.
+    kaynak = 'kullanıcı (sesli/yazılı komut)' if getattr(baglam, 'kaynak', 'model') == 'hizli' \
+        else 'görev sırasında yapay zeka'
+    # After web/file content entered the task, a "fact" may come from that content, not from the user.
+    dogruluk = 'dogrulanmadi' if getattr(baglam, 'kirli', False) else 'kullanici'
+    kayit = baglam.depo.hafiza_ekle(bilgi, kaynak=kaynak, tur=tur, konu=konu or None, dogruluk=dogruluk)
+    ek = ' (harici içerikten geldiği için doğrulanmamış olarak işaretlendi)' if dogruluk == 'dogrulanmadi' else ''
+    return Sonuc(True, f'Kaydedildi (#{kayit}){ek}.', dogrulandi=True)
 
 
 @arac('hafizayi_listele', 'Kalıcı hafızadaki bilgileri tarih ve kaynaklarıyla listeler.', {}, [],

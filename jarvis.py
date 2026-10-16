@@ -49,6 +49,9 @@ def main() -> None:
     if kisayol:
         print(f'Acil durdurma: {kisayol}')
 
+    from jarvis_core.zamanlayici import Zamanlayici
+    Zamanlayici(beyin.depo, teslim=lambda k: ses.konus(k['metin_soz']), sahip=beyin.motor.sahip).baslat()
+
     selamla()
     while True:
         metin = ses.dinle()

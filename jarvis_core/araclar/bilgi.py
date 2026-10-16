@@ -62,14 +62,15 @@ def internette_ara(baglam, sorgu):
       risk=OKUMA, yan_etki=False, zaman_asimi=30, guvenilmez_cikti=True)
 def web_sayfasi_oku(baglam, adres):
     import re
-    import requests
     from bs4 import BeautifulSoup
+    from ..ag import AgHatasi, getir
+    izinli = tuple(baglam.izinler.veri.get('izinli_aglar', [])) if baglam.izinler else ()
     try:
-        r = requests.get(adres, timeout=15, headers={'User-Agent': 'Mozilla/5.0 JARVIS'})
-        r.raise_for_status()
-    except requests.RequestException as e:
-        return Sonuc(False, f'Sayfa açılamadı: {e}')
-    sayfa = BeautifulSoup(r.text, 'html.parser')
+        html, son_adres, _ = getir(adres, izinli_hostlar=izinli, iptal=baglam.iptal)
+    except AgHatasi as e:
+        return Sonuc(False, str(e), hata_turu='ag')
+    sayfa = BeautifulSoup(html, 'html.parser')
     for etiket in sayfa(['script', 'style', 'nav', 'footer', 'noscript']):
         etiket.decompose()
-    return Sonuc(True, re.sub(r'\n\s*\n+', '\n', sayfa.get_text('\n')).strip()[:6000])
+    metin = re.sub(r'\n\s*\n+', '\n', sayfa.get_text('\n')).strip()[:6000]
+    return Sonuc(True, metin, veri={'kaynak': son_adres})
