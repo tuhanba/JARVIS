@@ -1,11 +1,14 @@
 """Speech in and out: Turkish TTS (edge-tts, pyttsx3 fallback) and STT
-(Google speech recognition), or plain keyboard input in text mode."""
+(Google speech recognition), or plain keyboard input in text mode.
+
+Note: edge-tts and recognize_google send audio/text to online services. The
+local-first voice pipeline is jarvis_core/audio (see docs/FEATURE_MATRIX.md).
+Audio packages are imported lazily so headless tests and the text mode work
+without them."""
 import asyncio
 import os
 import tempfile
 import threading
-
-import speech_recognition as sr
 
 SES = os.getenv('JARVIS_SES', 'tr-TR-AhmetNeural')
 
@@ -20,9 +23,14 @@ def yazi_modunu_ac() -> None:
     _yazi_modu = True
 
 
+def _sr():
+    import speech_recognition as sr
+    return sr
+
+
 def mikrofon_var() -> bool:
     try:
-        with sr.Microphone():
+        with _sr().Microphone():
             return True
     except Exception:
         return False
@@ -96,6 +104,7 @@ def dinle() -> str:
         except EOFError:
             return 'çıkış'
 
+    sr = _sr()
     r = sr.Recognizer()
     r.pause_threshold = 0.8
     r.dynamic_energy_threshold = True
@@ -118,12 +127,16 @@ def dinle() -> str:
 
 
 def onayla(soru: str) -> bool:
-    """Ask a yes/no question; anything but a clear yes counts as no."""
+    """Ask a yes/no question; anything but a clear yes counts as no. Negation and
+    doubt win ("yapma", "olur mu bilmiyorum" are not a yes)."""
+    from jarvis_core.niyet import cevap_coz
     konus(f'{soru} Evet mi, hayır mı?')
-    for _ in range(2):
-        cevap = dinle().lower()
-        if any(k in cevap for k in ('evet', 'tamam', 'onaylıyorum', 'olur', 'yap')):
+    for deneme in range(2):
+        karar = cevap_coz(dinle())
+        if karar == 'evet':
             return True
-        if any(k in cevap for k in ('hayır', 'hayir', 'iptal', 'vazgeç', 'yapma')):
+        if karar == 'hayir':
             return False
+        if deneme == 0:
+            konus('Anlayamadım. Lütfen yalnızca evet ya da hayır deyin.')
     return False

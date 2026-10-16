@@ -4,9 +4,16 @@ Serves the HUD (arayuz.html) on 127.0.0.1 only, guarded by a random token,
 streams state with Server-Sent Events and opens the page as a standalone app
 window (Edge --app). The page talks to the same task engine as the console.
 
-Security: bound to localhost; every request must carry the token and come
-from the panel's own origin, so other local programs or web pages cannot
-drive JARVIS through it."""
+Security: bound to localhost; every request must carry the token, come from
+the panel's own origin and name 127.0.0.1/localhost as Host (DNS rebinding),
+so other local programs or web pages cannot drive JARVIS through it. Request
+bodies are size-limited and type-checked (the string "false" is not a yes).
+
+Events carry an increasing id; a reconnecting page sends Last-Event-ID and gets
+what it missed from a bounded ring buffer, plus /api/durum as a snapshot that
+includes a pending approval."""
+import collections
+import itertools
 import json
 import os
 import queue
@@ -24,10 +31,15 @@ from urllib.parse import parse_qs, urlparse
 import psutil
 
 from ..ayarlar import PROJE, Ayarlar
-from ..motor import DURDUR, Motor
+from ..gizlilik import maskele_nesne
+from ..motor import Motor
+from ..niyet import Niyet, cevap_coz, durdurma_mi
 
 PENCERESIZ = 0x08000000 if sys.platform == 'win32' else 0
 HTML = Path(__file__).with_name('arayuz.html')
+ONAY_SURESI = 120          # seconds; no answer = no
+OLAY_TAMPONU = 500         # events kept for reconnect replay
+DINLEYICI_KUYRUGU = 1000   # a stuck page is dropped instead of growing memory forever
 UYANDIRMA = re.compile(r'\b(jarvis|carvis|cervis|çarvis|jarviş|jervis|jarves)\b[,.!]*\s*', re.IGNORECASE)
 
 
@@ -48,9 +60,12 @@ class Panel:
         self.token = secrets.token_urlsafe(24)
         self.dinleyiciler = []                    # one queue per open SSE stream
         self.kilit = threading.Lock()
+        self.olay_sayaci = itertools.count(1)
+        self.son_olaylar = collections.deque(maxlen=OLAY_TAMPONU)
         self.mesgul = threading.Event()           # a task is running
         self.konusuyor = threading.Event()
-        self.onay_kutusu = None                   # {'olay': Event, 'cevap': bool}
+        self.onay_kutusu = None                   # pending approval, bound to one action (see _onay_iste)
+        self._onay_ayrinti = {}                   # details of the action the engine is about to ask for
         self.girdi_bekleyen = None                # follow-up question from a fast command
         self.ses_acik = sesli
         self.surekli_dinleme = False
@@ -64,10 +79,17 @@ class Panel:
 
     # ------------------------------------------------------------- events to the page
     def yayinla(self, tur: str, veri=None) -> None:
-        paket = json.dumps({'tur': tur, 'veri': veri, 'zaman': time.time()}, ensure_ascii=False)
         with self.kilit:
+            kimlik = next(self.olay_sayaci)
+            paket = json.dumps({'id': kimlik, 'tur': tur, 'veri': maskele_nesne(veri), 'zaman': time.time()},
+                               ensure_ascii=False)
+            if tur not in ('telemetri',):
+                self.son_olaylar.append((kimlik, paket))
             for q in list(self.dinleyiciler):
-                q.put(paket)
+                try:
+                    q.put_nowait((kimlik, paket))
+                except queue.Full:
+                    self.dinleyiciler.remove(q)   # that page is not reading; it will reconnect and replay
 
     def durum_ayarla(self, durum: str, ayrinti: str = '') -> None:
         self.durum = durum
@@ -81,6 +103,8 @@ class Panel:
             self.yayinla('arac', {'arac': veri['arac'], 'argumanlar': veri['argumanlar']})
         elif olay == 'arac_sonuc':
             self.yayinla('arac_sonuc', veri)
+        elif olay == 'onay':
+            self._onay_ayrinti = dict(veri)
 
     # ------------------------------------------------------------- fast commands
     def _komutlar_hazirla(self) -> None:
@@ -113,23 +137,41 @@ class Panel:
 
     # ------------------------------------------------------------- questions from tools
     def _onay_iste(self, soru: str) -> bool:
-        olay = threading.Event()
-        self.onay_kutusu = {'olay': olay, 'cevap': False}
+        """Ask the user about exactly one action. The answer must name this request's id
+        (buttons) or arrive while it is the pending one (voice/text); a late, duplicate or
+        stale answer cannot approve anything else. No answer within ONAY_SURESI = no."""
+        ayrinti, self._onay_ayrinti = self._onay_ayrinti, {}
+        kutu = {'id': secrets.token_hex(6), 'olay': threading.Event(), 'cevap': False, 'soru': soru,
+                'son': time.time() + ONAY_SURESI, 'arac': ayrinti.get('arac'), 'argumanlar': ayrinti.get('argumanlar'),
+                'gorev': ayrinti.get('gorev'), 'eylem_id': ayrinti.get('eylem_id'), 'sebep': ayrinti.get('sebep')}
+        self.onay_kutusu = kutu
+        onceki_durum = self.durum
         self.durum_ayarla('onay')
-        self.yayinla('onay', {'soru': soru})
+        self.yayinla('onay', self._onay_ozeti(kutu))
         if self.ses_acik:
             threading.Thread(target=self.ses.konus, args=(soru,), daemon=True).start()
-        olay.wait(120)
-        cevap = self.onay_kutusu['cevap']
-        self.onay_kutusu = None
-        self.yayinla('onay_bitti', {'cevap': cevap})
-        self.durum_ayarla('calisiyor')
+        kutu['olay'].wait(ONAY_SURESI)
+        cevap = kutu['cevap'] is True and time.time() <= kutu['son'] + 1
+        with self.kilit:
+            if self.onay_kutusu is kutu:
+                self.onay_kutusu = None
+        self.yayinla('onay_bitti', {'id': kutu['id'], 'cevap': cevap})
+        self.durum_ayarla('calisiyor' if onceki_durum != 'onay' else 'hazir')
         return cevap
 
-    def onay_cevapla(self, cevap: bool) -> None:
-        if self.onay_kutusu:
-            self.onay_kutusu['cevap'] = bool(cevap)
-            self.onay_kutusu['olay'].set()
+    @staticmethod
+    def _onay_ozeti(kutu) -> dict:
+        return {k: kutu[k] for k in ('id', 'soru', 'arac', 'argumanlar', 'gorev', 'eylem_id', 'sebep', 'son')}
+
+    def onay_cevapla(self, cevap: bool, kimlik: str = None) -> bool:
+        """Returns False when there is no pending approval or the id does not match it."""
+        with self.kilit:
+            kutu = self.onay_kutusu
+            if not kutu or (kimlik is not None and kimlik != kutu['id']) or kutu['olay'].is_set():
+                return False
+            kutu['cevap'] = cevap is True
+            kutu['olay'].set()
+            return True
 
     def _girdi_bekle(self) -> str:
         kutu = {'olay': threading.Event(), 'metin': ''}
@@ -145,17 +187,19 @@ class Panel:
         metin = (metin or '').strip()
         if not metin:
             return 'bos'
-        k = self.komutlar.kucuk(metin)
         if self.onay_kutusu:
-            evet = any(w in k for w in ('evet', 'tamam', 'onay', 'olur', 'yap'))
-            self.onay_cevapla(evet)
+            karar = cevap_coz(UYANDIRMA.sub('', metin, count=1))
+            if karar == 'belirsiz':
+                self.yayinla('bilgi', {'metin': 'Anlayamadım. Onay için yalnızca "evet" ya da "hayır" deyin.'})
+                return 'onay_belirsiz'
+            self.onay_cevapla(karar == 'evet')
             return 'onay'
         if self.girdi_bekleyen:
             self.girdi_bekleyen['metin'] = metin
             self.girdi_bekleyen['olay'].set()
             return 'girdi'
         if self.mesgul.is_set():
-            if any(w in k for w in DURDUR):
+            if durdurma_mi(metin):
                 self.dur()
                 return 'iptal'
             self.yayinla('bilgi', {'metin': 'Bir görev sürüyor. Durdurmak için "dur" deyin veya DURDUR\'a basın.'})
@@ -176,6 +220,13 @@ class Panel:
                 return
             yalin = re.sub(r'^(hey )?jarvis[, ]*', '', k) or k
             cevap = self.komutlar._yerel_komut(yalin, metin, self._AI(self))
+            if isinstance(cevap, Niyet):
+                # Fast path: no model, but the same executor, policy, approval and audit log.
+                sonuc = self.motor.hizli_calistir(metin, cevap)
+                self.yayinla('gorev_bitti', {'durum': sonuc.durum, 'sure': time.time() - t0, 'gorev': sonuc.gorev_id,
+                                             'yerel': True})
+                self.soyle(sonuc.cevap, sonuc.durum)
+                return
             if cevap is not None:
                 self.yayinla('gorev_bitti', {'durum': 'tamamlandi', 'sure': time.time() - t0, 'yerel': True})
                 self.soyle(cevap, 'tamamlandi')
@@ -187,7 +238,7 @@ class Panel:
                 self.soyle(self.ai_hata or 'Yapay zeka kapalı.', 'hata')
                 return
             self.yayinla('gorev_basladi', {'istek': metin})
-            sonuc = self.motor.calistir(metin)
+            sonuc = self.motor.calistir(metin, kaynak='panel')
             self.yayinla('gorev_bitti', {'durum': sonuc.durum, 'sure': time.time() - t0, 'gorev': sonuc.gorev_id})
             self.soyle(sonuc.cevap, sonuc.durum)
         except Exception as e:
@@ -199,11 +250,13 @@ class Panel:
                 self.durum_ayarla('dinliyor' if self.surekli_dinleme else 'hazir')
 
     def dur(self) -> None:
-        self.motor.iptal_et()
+        sayi = self.motor.iptal_et()
         self.ses.sustur()
         if self.onay_kutusu:
             self.onay_cevapla(False)
-        self.yayinla('bilgi', {'metin': 'Durduruldu.'})
+        # "Stopped" is reported by the task itself once it has really ended (gorev_bitti);
+        # here we only acknowledge the request.
+        self.yayinla('bilgi', {'metin': 'Durdurma istendi.' if sayi else 'Durduruldu.'})
 
     # ------------------------------------------------------------- AI / health
     def _ai_kontrol(self) -> None:
@@ -259,7 +312,7 @@ class Panel:
                     self.ai_hata = 'Ollama çalışmıyor.'
                     self.yayinla('ai', {'hazir': False, 'model': self.model, 'hata': self.ai_hata})
                 veri['hafiza'] = len(self.motor.depo.hafiza())
-                veri['gorev_sayisi'] = len(self.motor.depo.gorevler(1000))
+                veri['gorev_sayisi'] = self.motor.depo.gorev_sayisi()
             self.son_telemetri.update(veri)
             self.yayinla('telemetri', self.son_telemetri)
             sayac += 1
@@ -309,11 +362,10 @@ class Panel:
             metin = self.ses.dinle()
             if not metin or not self.surekli_dinleme:
                 continue
-            k = self.komutlar.kucuk(metin)
             if self.onay_kutusu or self.girdi_bekleyen:
                 self.komut(metin, kaynak='ses')
             elif self.mesgul.is_set():
-                if any(w in k for w in DURDUR):
+                if durdurma_mi(metin):
                     self.dur()
             elif UYANDIRMA.search(metin):
                 istek = UYANDIRMA.sub('', metin, count=1).strip()
@@ -333,9 +385,11 @@ class Panel:
                 'mikrofon': self.mikrofon, 'surekli': self.surekli_dinleme, 'ses': self.ses_acik,
                 'mesgul': self.mesgul.is_set(), 'telemetri': self.son_telemetri,
                 'yarim_kalanlar': self.motor.yarim_kalanlar,
-                'gecmis': [{'id': g['id'], 'istek': g['istek'], 'durum': g['durum'], 'zaman': g['olusturma']}
-                           for g in self.motor.depo.gorevler(15)],
-                'onay': None}
+                'gecmis': [{'id': g['id'], 'istek': g['istek'], 'durum': g['durum'], 'zaman': g['olusturma'],
+                            'kaynak': g.get('kaynak')} for g in self.motor.depo.gorevler(15)],
+                'calisan_gorevler': self.motor.calisiyor(),
+                'onay': self._onay_ozeti(self.onay_kutusu) if self.onay_kutusu else None,
+                'son_olay': self.son_olaylar[-1][0] if self.son_olaylar else 0}
 
     def baslat_arka_plan(self) -> None:
         threading.Thread(target=self._telemetri_dongusu, daemon=True).start()
@@ -355,8 +409,11 @@ def _isleyici(panel: Panel, kapat):
             token = self.headers.get('X-Jarvis-Token') or (sorgu.get('t') or [''])[0]
             if not secrets.compare_digest(token, panel.token):
                 return False
+            port = self.server.server_port
+            if self.headers.get('Host') not in (f'127.0.0.1:{port}', f'localhost:{port}'):
+                return False   # DNS rebinding: a foreign name pointing at 127.0.0.1
             kaynak = self.headers.get('Origin')
-            return kaynak in (None, f'http://127.0.0.1:{self.server.server_port}')
+            return kaynak in (None, f'http://127.0.0.1:{port}', f'http://localhost:{port}')
 
         def _yanit(self, kod: int, govde: bytes, tur='application/json; charset=utf-8') -> None:
             self.send_response(kod)
@@ -380,18 +437,26 @@ def _isleyici(panel: Panel, kapat):
             if url.path == '/api/durum':
                 return self._yanit(200, json.dumps(panel.ozet(), ensure_ascii=False).encode('utf-8'))
             if url.path == '/olaylar':
-                q = queue.Queue()
+                q = queue.Queue(maxsize=DINLEYICI_KUYRUGU)
+                try:
+                    son = int(self.headers.get('Last-Event-ID') or (sorgu.get('son') or ['0'])[0])
+                except ValueError:
+                    son = 0
                 with panel.kilit:
+                    kacan = [(k, p) for k, p in panel.son_olaylar if k > son] if son else []
                     panel.dinleyiciler.append(q)
                 self.send_response(200)
                 self.send_header('Content-Type', 'text/event-stream; charset=utf-8')
                 self.send_header('Cache-Control', 'no-store')
                 self.end_headers()
                 try:
+                    for kimlik, paket in kacan:
+                        self.wfile.write(f'id: {kimlik}\ndata: {paket}\n\n'.encode('utf-8'))
+                    self.wfile.flush()
                     while True:
                         try:
-                            paket = q.get(timeout=15)
-                            self.wfile.write(f'data: {paket}\n\n'.encode('utf-8'))
+                            kimlik, paket = q.get(timeout=15)
+                            self.wfile.write(f'id: {kimlik}\ndata: {paket}\n\n'.encode('utf-8'))
                         except queue.Empty:
                             self.wfile.write(b': canli\n\n')
                         self.wfile.flush()
@@ -399,7 +464,8 @@ def _isleyici(panel: Panel, kapat):
                     pass
                 finally:
                     with panel.kilit:
-                        panel.dinleyiciler.remove(q)
+                        if q in panel.dinleyiciler:
+                            panel.dinleyiciler.remove(q)
                 return
             self._yanit(404, b'{}')
 
@@ -408,32 +474,56 @@ def _isleyici(panel: Panel, kapat):
             if not self._izinli(parse_qs(url.query)):
                 return self._yanit(403, b'{"hata":"yetkisiz"}')
             try:
-                uzunluk = min(int(self.headers.get('Content-Length') or 0), 20000)
+                uzunluk = int(self.headers.get('Content-Length') or 0)
+            except ValueError:
+                return self._yanit(400, b'{"hata":"uzunluk"}')
+            if uzunluk > 20000:
+                return self._yanit(413, b'{"hata":"istek cok buyuk"}')
+            try:
                 govde = json.loads(self.rfile.read(uzunluk) or b'{}')
             except ValueError:
-                return self._yanit(400, b'{}')
+                return self._yanit(400, b'{"hata":"gecersiz JSON"}')
+            if not isinstance(govde, dict):
+                return self._yanit(400, b'{"hata":"nesne bekleniyor"}')
+
+            def bool_al(ad):
+                deger = govde.get(ad)
+                if not isinstance(deger, bool):     # "false" (a string) must not become True
+                    raise ValueError(ad)
+                return deger
+
             yol = url.path
             sonuc = 'ok'
-            if yol == '/api/komut':
-                sonuc = panel.komut(str(govde.get('metin', ''))[:4000])
-            elif yol == '/api/dur':
-                panel.dur()
-            elif yol == '/api/onay':
-                panel.onay_cevapla(bool(govde.get('cevap')))
-            elif yol == '/api/dinle':
-                panel.bir_kez_dinle()
-            elif yol == '/api/surekli':
-                panel.surekli_ayarla(bool(govde.get('acik')))
-            elif yol == '/api/ses':
-                panel.ses_acik = bool(govde.get('acik'))
-                if not panel.ses_acik:
-                    panel.ses.sustur()
-            elif yol == '/api/ollama':
-                threading.Thread(target=panel.ollama_baslat, daemon=True).start()
-            elif yol == '/api/kapat':
-                threading.Thread(target=kapat, daemon=True).start()
-            else:
-                return self._yanit(404, b'{}')
+            try:
+                if yol == '/api/komut':
+                    metin = govde.get('metin', '')
+                    if not isinstance(metin, str) or len(metin) > 4000:
+                        raise ValueError('metin')
+                    sonuc = panel.komut(metin)
+                elif yol == '/api/dur':
+                    panel.dur()
+                elif yol == '/api/onay':
+                    kimlik = govde.get('id')
+                    if kimlik is not None and not isinstance(kimlik, str):
+                        raise ValueError('id')
+                    if not panel.onay_cevapla(bool_al('cevap'), kimlik):
+                        return self._yanit(409, b'{"hata":"bekleyen onay yok veya kimlik eslesmiyor"}')
+                elif yol == '/api/dinle':
+                    panel.bir_kez_dinle()
+                elif yol == '/api/surekli':
+                    panel.surekli_ayarla(bool_al('acik'))
+                elif yol == '/api/ses':
+                    panel.ses_acik = bool_al('acik')
+                    if not panel.ses_acik:
+                        panel.ses.sustur()
+                elif yol == '/api/ollama':
+                    threading.Thread(target=panel.ollama_baslat, daemon=True).start()
+                elif yol == '/api/kapat':
+                    threading.Thread(target=kapat, daemon=True).start()
+                else:
+                    return self._yanit(404, b'{}')
+            except ValueError as e:
+                return self._yanit(400, json.dumps({'hata': f'gecersiz alan: {e}'}).encode())
             self._yanit(200, json.dumps({'sonuc': sonuc}).encode())
     return Isleyici
 

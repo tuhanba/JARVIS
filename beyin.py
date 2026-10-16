@@ -57,5 +57,9 @@ class Beyin:
             return 'Yapay zeka kapalı efendim. Ollama uygulamasını açıp beni yeniden başlatın.'
         return _seslendirilebilir(self.motor.calistir(metin).cevap)
 
+    def hizli(self, metin: str, niyet) -> str:
+        """A fast command, run by the same executor (policy, approval, audit) as the model."""
+        return _seslendirilebilir(self.motor.hizli_calistir(metin, niyet).cevap)
+
     def iptal(self) -> None:
         self.motor.iptal_et()

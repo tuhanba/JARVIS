@@ -1,0 +1,10 @@
+# Minimal set for the headless test suite (no audio, no GUI). CI installs this.
+pytest>=8.0
+jsonschema>=4.0
+python-dotenv>=1.0
+psutil>=5.8
+requests>=2.26
+ollama>=0.5
+ddgs>=9.0
+Send2Trash>=1.8
+beautifulsoup4>=4.10

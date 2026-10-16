@@ -94,8 +94,9 @@ HAVA_KODLARI = {
 }
 
 def _onay(soru: str) -> bool:
-    if os.getenv('JARVIS_TAM_YETKI') == '1':
-        return True
+    """Only for direct legacy calls. Fast commands reach these functions through the
+    task executor, which asks (or applies the user's rule) and passes onaylandi=True.
+    JARVIS_TAM_YETKI is migrated to visible permission rules (jarvis_core/izinler.py)."""
     return ses.onayla(soru)
 
 
@@ -478,25 +479,25 @@ def bilgisayari_kilitle() -> str:
     return 'Bilgisayar kilitlendi.'
 
 
-def bilgisayari_kapat() -> str:
+def bilgisayari_kapat(onaylandi: bool = False) -> str:
     """Bilgisayarı kapatır (onay ister)."""
-    if not _onay('Bilgisayarı kapatayım mı?'):
+    if not onaylandi and not _onay('Bilgisayarı kapatayım mı?'):
         return 'Kapatma iptal edildi.'
     subprocess.run(['shutdown', '/s', '/t', '5'] if WIN else ['shutdown', '-h', '+0'])
     return 'Bilgisayar 5 saniye içinde kapanıyor.'
 
 
-def yeniden_baslat() -> str:
+def yeniden_baslat(onaylandi: bool = False) -> str:
     """Bilgisayarı yeniden başlatır (onay ister)."""
-    if not _onay('Bilgisayarı yeniden başlatayım mı?'):
+    if not onaylandi and not _onay('Bilgisayarı yeniden başlatayım mı?'):
         return 'Yeniden başlatma iptal edildi.'
     subprocess.run(['shutdown', '/r', '/t', '5'] if WIN else ['shutdown', '-r', '+0'])
     return 'Bilgisayar 5 saniye içinde yeniden başlıyor.'
 
 
-def uyku_moduna_al() -> str:
+def uyku_moduna_al(onaylandi: bool = False) -> str:
     """Bilgisayarı uyku moduna alır (onay ister)."""
-    if not _onay('Bilgisayarı uyku moduna alayım mı?'):
+    if not onaylandi and not _onay('Bilgisayarı uyku moduna alayım mı?'):
         return 'İptal edildi.'
     if WIN:
         subprocess.run(['rundll32.exe', 'powrprof.dll,SetSuspendState', '0,1,0'])
@@ -527,9 +528,9 @@ def notlari_oku() -> str:
     return 'Notlarınız: ' + '. '.join(satirlar[-10:]) if satirlar else 'Hiç notunuz yok.'
 
 
-def notlari_sil() -> str:
+def notlari_sil(onaylandi: bool = False) -> str:
     """Tüm notları siler (onay ister)."""
-    if not os.path.exists(NOT_DOSYASI) or not _onay('Tüm notları sileyim mi?'):
+    if not os.path.exists(NOT_DOSYASI) or not (onaylandi or _onay('Tüm notları sileyim mi?')):
         return 'Notlar silinmedi.'
     os.remove(NOT_DOSYASI)
     return 'Notlar silindi.'

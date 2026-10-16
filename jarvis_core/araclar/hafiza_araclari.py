@@ -8,7 +8,10 @@ from .temel import Sonuc, arac, metin
        'tur': {'type': 'string', 'enum': ['tercih', 'kisisel', 'proje'], 'description': 'Bilgi türü'}},
       ['bilgi', 'tur'], risk=YAZMA, yan_etki=True)
 def hafizaya_kaydet(baglam, bilgi, tur):
-    kayit = baglam.depo.hafiza_ekle(bilgi, kaynak='görev sırasında yapay zeka', tur=tur)
+    # Source comes from the input path, never from the model: a fast command is the user's own words.
+    kaynak = 'kullanıcı (sesli/yazılı komut)' if getattr(baglam, 'kaynak', 'model') == 'hizli' \
+        else 'görev sırasında yapay zeka'
+    kayit = baglam.depo.hafiza_ekle(bilgi, kaynak=kaynak, tur=tur)
     return Sonuc(True, f'Kaydedildi (#{kayit}).', dogrulandi=True)
 
 

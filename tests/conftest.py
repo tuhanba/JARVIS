@@ -17,6 +17,9 @@ def ev(tmp_path, monkeypatch):
     monkeypatch.setenv('USERPROFILE', str(ev))
     monkeypatch.setenv('JARVIS_VERI', str(tmp_path / 'veri'))
     monkeypatch.setattr(Path, 'home', classmethod(lambda cls: ev))
+    # On Windows the known-folder API would return the real Documents folder.
+    from jarvis_core import yollar
+    monkeypatch.setattr(yollar, '_windows_bilinen', lambda guid: None)
     return ev
 
 

@@ -181,13 +181,15 @@ footer { display: grid; grid-template-columns: auto 1fr auto auto auto auto; gap
 .perde { position: fixed; inset: 0; background: rgba(0,6,10,.72); display: none; place-items: center; z-index: 10;
   backdrop-filter: blur(3px); }
 .perde.acik { display: grid; }
-.onay { width: 560px; background: rgba(8,24,34,.96); border: 1px solid var(--amber); padding: 26px 28px;
+.onay { width: min(560px, calc(100vw - 32px)); max-height: calc(100vh - 32px); overflow-y: auto;
+  box-sizing: border-box; background: rgba(8,24,34,.96); border: 1px solid var(--amber); padding: 26px 28px;
   box-shadow: 0 0 40px rgba(255,181,71,.25); position: relative; }
 .onay h3 { font-size: 12px; letter-spacing: .32em; color: var(--amber); margin-bottom: 14px; font-weight: 500; }
 .onay p { font-size: 16px; line-height: 1.55; margin-bottom: 20px; user-select: text; }
 .onay .sure { height: 3px; background: rgba(255,181,71,.15); margin-bottom: 20px; }
 .onay .sure i { display: block; height: 100%; background: var(--amber); width: 100%; transition: width 1s linear; }
-.onay .butonlar { display: flex; gap: 12px; justify-content: flex-end; }
+.onay .butonlar { display: flex; flex-wrap: wrap; gap: 12px; justify-content: flex-end; }
+#onayAyrinti { margin: -8px 0 16px; overflow-wrap: anywhere; user-select: text; }
 .onay button { padding: 12px 26px; font-family: var(--ui); letter-spacing: .2em; font-size: 12px; cursor: pointer; border: 1px solid; }
 .onay .evet { background: var(--green); color: #00170e; border-color: var(--green); }
 .onay .hayir { background: transparent; color: var(--text); border-color: var(--line2); }
@@ -326,6 +328,7 @@ footer { display: grid; grid-template-columns: auto 1fr auto auto auto auto; gap
   <div class="onay">
     <h3>⚠ ONAY GEREKİYOR</h3>
     <p id="onaySoru"></p>
+    <div class="ipucu" id="onayAyrinti"></div>
     <div class="sure"><i id="onaySure"></i></div>
     <div class="butonlar"><button class="hayir" id="hayir">HAYIR (H)</button><button class="evet" id="evet">EVET (E)</button></div>
     <div class="ipucu">Yanıt verilmezse 2 dakika sonra “hayır” sayılır. Web sayfası veya dosya içerikleri bu onayı veremez.</div>
@@ -362,7 +365,8 @@ const DURUMLAR = {
   hata: ['HATA', 'bir sorun oluştu', '--red', .5]
 };
 const SONUC_ADLARI = { tamamlandi: 'TAMAMLANDI', dogrulanamadi: 'DOĞRULANAMADI', iptal: 'İPTAL', hata: 'HATA',
-  dongu: 'DÖNGÜ', butce_asildi: 'SINIR AŞILDI' };
+  dongu: 'DÖNGÜ', butce_asildi: 'SINIR AŞILDI', reddedildi: 'YAPILMADI', calisiyor: 'ÇALIŞIYOR',
+  yarida_kaldi: 'YARIDA KALDI', bozuk_kayit: 'BOZUK KAYIT' };
 
 // ---------------------------------------------------------- HUD construction
 (function hudKur() {
@@ -472,8 +476,21 @@ function yanitYaz(metin) {
 }
 
 // ---------------------------------------------------------- live events
-let gorevBaslangic = null, adim = 0, sonArac = null, onayZamanlayici;
+let gorevBaslangic = null, adim = 0, sonArac = null, onayZamanlayici, aktifOnay = null, sonOlay = 0;
+function onayGoster(v) {
+  aktifOnay = v.id;
+  $('onaySoru').textContent = v.soru;
+  const arg = Object.entries(v.argumanlar || {}).map(([k, x]) => `${k}: ${String(x).slice(0, 120)}`).join(' · ');
+  $('onayAyrinti').textContent = v.arac ? `İşlem: ${ARAC_ADLARI[v.arac] || v.arac}${arg ? ' — ' + arg : ''}${v.sebep ? ' · Neden: ' + v.sebep : ''}` : '';
+  $('perde').classList.add('acik');
+  const toplam = 120; let kalan = Math.max(0, Math.round((v.son || (Date.now() / 1000 + toplam)) - Date.now() / 1000));
+  $('onaySure').style.width = (kalan / toplam * 100) + '%';
+  clearInterval(onayZamanlayici);
+  onayZamanlayici = setInterval(() => { kalan--; $('onaySure').style.width = (Math.max(0, kalan) / toplam * 100) + '%'; if (kalan <= 0) clearInterval(onayZamanlayici); }, 1000);
+}
+function onayCevapla(cevap) { if (aktifOnay) api('/api/onay', { cevap, id: aktifOnay }); }
 function olay(p) {
+  if (p.id) { if (p.id <= sonOlay) return; sonOlay = p.id; }   // replayed after reconnect: show once
   const v = p.veri || {};
   switch (p.tur) {
     case 'durum': durumAyarla(v.durum, v.ayrinti); break;
@@ -501,15 +518,10 @@ function olay(p) {
       ekle('jarvis', 'JARVIS' + b, esc(v.metin), p.zaman); yanitYaz(v.metin); gorevBitti = null; break;
     }
     case 'bilgi': ekle('bilgi', 'SİSTEM', esc(v.metin), p.zaman); bildir(v.metin); break;
-    case 'onay': {
-      $('onaySoru').textContent = v.soru; $('perde').classList.add('acik');
-      let kalan = 120; $('onaySure').style.width = '100%';
-      clearInterval(onayZamanlayici);
-      onayZamanlayici = setInterval(() => { kalan--; $('onaySure').style.width = (kalan / 120 * 100) + '%'; if (kalan <= 0) clearInterval(onayZamanlayici); }, 1000);
-      break;
-    }
+    case 'onay': onayGoster(v); break;
     case 'onay_bitti':
-      $('perde').classList.remove('acik'); clearInterval(onayZamanlayici);
+      if (v.id && aktifOnay && v.id !== aktifOnay) break;
+      aktifOnay = null; $('perde').classList.remove('acik'); clearInterval(onayZamanlayici);
       ekle('bilgi', 'ONAY', v.cevap ? 'Onay verildi.' : 'Onay verilmedi.', p.zaman); break;
     case 'telemetri': telemetri(v); break;
     case 'ai': aiDurum(v); break;
@@ -547,7 +559,8 @@ function mikrofon(v) {
 }
 
 function baglan() {
-  const k = new EventSource('/olaylar?t=' + encodeURIComponent(TOKEN));
+  // EventSource resends Last-Event-ID on its own reconnects; ?son= covers the first connect.
+  const k = new EventSource('/olaylar?t=' + encodeURIComponent(TOKEN) + '&son=' + sonOlay);
   k.onmessage = (e) => { $('kopuk').classList.remove('acik'); olay(JSON.parse(e.data)); };
   k.onerror = () => { $('kopuk').classList.add('acik'); };
   k.onopen = () => $('kopuk').classList.remove('acik');
@@ -561,6 +574,9 @@ async function ilkYukleme() {
   for (const g of (d.gecmis || []).slice().reverse())
     ekle('bilgi', 'GEÇMİŞ', `${esc(g.istek)} <span class="rozet ${g.durum}">${SONUC_ADLARI[g.durum] || esc(g.durum)}</span>`, g.zaman);
   if (d.yarim_kalanlar && d.yarim_kalanlar.length) bildir(`Yarıda kalan görev var: ${d.yarim_kalanlar.join(', ')}`);
+  if (d.onay) onayGoster(d.onay);
+  if (d.mesgul) uyg.classList.add('mesgul');
+  sonOlay = d.son_olay || 0;
   durumAyarla(d.durum === 'baslatiliyor' && d.ai.hazir ? 'hazir' : d.durum);
 }
 
@@ -576,8 +592,8 @@ $('gonder').onclick = () => gonder();
 $('girdi').addEventListener('keydown', (e) => { if (e.key === 'Enter') gonder(); });
 $('dur').onclick = () => api('/api/dur');
 $('mik').onclick = () => api('/api/dinle');
-$('evet').onclick = () => api('/api/onay', { cevap: true });
-$('hayir').onclick = () => api('/api/onay', { cevap: false });
+$('evet').onclick = () => onayCevapla(true);
+$('hayir').onclick = () => onayCevapla(false);
 $('ollamaBaslat').onclick = () => { bildir('Ollama başlatılıyor…'); api('/api/ollama'); };
 $('uyandirma').onclick = () => api('/api/surekli', { acik: !$('uyandirma').classList.contains('acik') });
 $('sesAnahtar').onclick = () => { const a = !$('sesAnahtar').classList.contains('acik');
@@ -586,8 +602,8 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'Escape') api('/api/dur');
   if (e.ctrlKey && e.code === 'Space') { e.preventDefault(); api('/api/dinle'); }
   if ($('perde').classList.contains('acik') && document.activeElement !== $('girdi')) {
-    if (e.key === 'e' || e.key === 'E') api('/api/onay', { cevap: true });
-    if (e.key === 'h' || e.key === 'H') api('/api/onay', { cevap: false });
+    if (e.key === 'e' || e.key === 'E') onayCevapla(true);
+    if (e.key === 'h' || e.key === 'H') onayCevapla(false);
   }
 });
 $('girdi').focus();

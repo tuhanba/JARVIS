@@ -23,7 +23,8 @@ def test_sema_disi_arguman_calistirilmaz(motor_yap, ev):
     arac_mesaji = [x for x in m.llm.gorulen[-1] if x['role'] == 'tool'][0]['content']
     assert 'şemaya uymuyor' in arac_mesaji
     assert not (ev / 'Documents' / 'a.txt').exists()
-    assert m.depo.adimlar(s.gorev_id) == []
+    # recorded as a failed step (F03), never executed
+    assert [a['durum'] for a in m.depo.adimlar(s.gorev_id)] == ['gecersiz']
 
 
 def test_guvenli_klasor_disina_yazma_onay_ister(motor_yap, ev, tmp_path):
