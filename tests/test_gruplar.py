@@ -32,3 +32,27 @@ def test_baglam_tasmasi_eski_arac_ciktilarini_kisaltir(motor_yap, ev):
                [{'role': 'tool', 'tool_name': 'x', 'content': 'a' * 3000} for _ in range(6)]
     m._baglami_sigdir(mesajlar)
     assert len(mesajlar[2]['content']) < 500 and len(mesajlar[-1]['content']) == 3000
+
+
+def test_fare_kullanilirken_bekler_ve_vazgecer():
+    import threading
+    import time
+    from jarvis_core.araclar import Baglam
+    from jarvis_core.araclar.arayuz_otomasyonu import fare_bosta_bekle
+    b = Baglam(threading.Event())
+    sabit = lambda: (100, 100)
+    t0 = time.time()
+    assert fare_bosta_bekle(b, sakin=0.3, en_fazla=2, konum=sabit)
+    assert time.time() - t0 < 0.5
+    hareket = iter(range(10_000))
+    oynayan = lambda: (next(hareket) * 10, 0)          # user keeps moving the mouse
+    assert not fare_bosta_bekle(b, sakin=0.3, en_fazla=0.6, konum=oynayan)
+
+
+def test_uygulama_icinde_hassas_tiklama_onay_ister(motor_yap, ev):
+    from jarvis_core.araclar import KAYIT
+    iz = motor_yap([]).izinler
+    iz.kural_ekle('*', '', 'izin')
+    t = KAYIT['ogeye_tikla']
+    assert iz.karar(t, {'pencere': 'Ayarlar', 'oge': 'Bluetooth'})[0] == 'izin'
+    assert iz.karar(t, {'pencere': 'Mağaza', 'oge': 'Satın al'})[0] == 'sor'

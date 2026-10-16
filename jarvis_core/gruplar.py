@@ -10,7 +10,8 @@ GRUPLAR = {
     'temel': ['saat_tarih', 'dosya_ara', 'klasor_listele', 'dosya_oku', 'dosya_yaz', 'son_islemi_geri_al',
               'uygulama_ac', 'hafizaya_kaydet'],
     'dosya': ['klasor_olustur', 'dosya_kopyala', 'dosya_tasi', 'yeniden_adlandir', 'cop_kutusuna_gonder'],
-    'uygulama': ['uygulama_kapat', 'pencereleri_listele', 'pencereye_gec', 'metin_yaz', 'pano_oku', 'pano_yaz'],
+    'uygulama': ['uygulama_kapat', 'pencereleri_listele', 'pencereye_gec', 'metin_yaz', 'pano_oku', 'pano_yaz',
+                 'pencere_ogeleri', 'ogeye_tikla', 'ogeye_yaz'],
     'bilgi': ['sistem_durumu', 'hava_durumu', 'doviz_kuru', 'haberler', 'internette_ara', 'web_sayfasi_oku'],
     'belge': ['belge_oku', 'rapor_yaz'],
     'indirme': ['dosya_indir', 'dosya_ac'],
@@ -21,7 +22,7 @@ GRUPLAR = {
 }
 ACIKLAMALAR = {
     'dosya': 'taşıma, kopyalama, yeniden adlandırma, klasör oluşturma, silme',
-    'uygulama': 'uygulama kapatma, pencereler, metin yazma, pano',
+    'uygulama': 'uygulama kapatma, pencereler, uygulama içindeki düğme/alanlara adıyla tıklama ve yazma, pano',
     'bilgi': 'internette arama, web sayfası okuma, hava, haber, döviz, sistem durumu',
     'belge': 'PDF/Word/Excel okuma, rapor yazma',
     'indirme': 'bağlantıdan dosya indirme, dosya açma',
@@ -32,7 +33,8 @@ ACIKLAMALAR = {
 ANAHTARLAR = {
     'dosya': r'taşı|tasi|kopyala|yeniden adlandır|adını değiştir|klasör oluştur|yeni klasör|(?<!\w)sil|çöp|geri dönüşüm|'
              r'(?<!\w)koy\b|yerleştir|diğer klasör',
-    'uygulama': r'(?<!\w)kapat|pencere|(?<!\w)yaz\b|yazı yaz|pano|kopyalanan|odakla|(?<!\w)geç\b',
+    'uygulama': r'(?<!\w)kapat|pencere|(?<!\w)yaz\b|yazı yaz|pano|kopyalanan|odakla|(?<!\w)geç\b|düğme|butona|menü|ayarlar|'
+                r'(?<!\w)bas\b|seç\b|işaretle|aç(?:ık|ma)? konumu',
     'bilgi': r'(?<!\w)hava|(?<!\w)haber|döviz|dolar|euro|(?<!\w)kur\b|internet|(?<!\w)ara\b|(?<!\w)arat|(?<!\w)güncel|son dakika|kimdir|nedir|ne zaman|kaç tl|'
              r'(?<!\w)fiyat|sistem durumu|işlemci|(?<!\w)ram|bellek|(?<!\w)pil|(?<!\w)maç|skor',
     'belge': r'pdf|word|excel|docx|xlsx|csv|belge|rapor|özetle|özet çıkar|(?<!\w)tablo|döküman|doküman',

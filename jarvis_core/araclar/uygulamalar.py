@@ -204,6 +204,9 @@ def _odaktaki_metin():
 def metin_yaz(baglam, metin, pencere):
     if not WIN:
         return Sonuc(False, 'Metin yazma yalnızca Windows\'ta destekleniyor.', dogrulandi=False)
+    from .arayuz_otomasyonu import fare_bosta_bekle
+    if not fare_bosta_bekle(baglam):
+        return Sonuc(False, 'Fareyi kullanıyorsunuz; size karışmamak için durdum.', dogrulandi=False)
     if not _one_getir(pencere):
         return Sonuc(False, f'"{pencere}" penceresi öne gelmedi; kör yazmamak için durdum.', dogrulandi=False)
     import pyautogui
