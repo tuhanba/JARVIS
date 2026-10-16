@@ -72,6 +72,7 @@ class Panel:
         self.mikrofon = False
         self.durum = 'baslatiliyor'
         self.son_telemetri = {}
+        self.ses_durumu = {}                      # which STT/TTS runs, local or online (shown in the UI)
 
         self.motor = Motor(onay=self._onay_iste, bildir=self._motor_olayi)
         self.ai_hazir, self.ai_hata, self.model = False, '', self.a.model()
@@ -83,7 +84,7 @@ class Panel:
             kimlik = next(self.olay_sayaci)
             paket = json.dumps({'id': kimlik, 'tur': tur, 'veri': maskele_nesne(veri), 'zaman': time.time()},
                                ensure_ascii=False)
-            if tur not in ('telemetri',):
+            if tur not in ('telemetri', 'parca'):   # live-only events are not replayed
                 self.son_olaylar.append((kimlik, paket))
             for q in list(self.dinleyiciler):
                 try:
@@ -105,6 +106,8 @@ class Panel:
             self.yayinla('arac_sonuc', veri)
         elif olay == 'onay':
             self._onay_ayrinti = dict(veri)
+        elif olay == 'parca':
+            self.yayinla('parca', veri)
 
     # ------------------------------------------------------------- fast commands
     def _komutlar_hazirla(self) -> None:
@@ -325,6 +328,11 @@ class Panel:
         except Exception:
             self.mikrofon = False
         self.yayinla('mikrofon', {'var': self.mikrofon})
+        try:
+            self.ses_durumu = self.ses.ses_durumu()
+        except Exception as e:
+            self.ses_durumu = {'uyarilar': [f'Ses sağlayıcıları denetlenemedi: {e}']}
+        self.yayinla('ses_durumu', self.ses_durumu)
 
     def bir_kez_dinle(self) -> None:
         if not self.mikrofon:
@@ -383,6 +391,7 @@ class Panel:
     def ozet(self) -> dict:
         return {'durum': self.durum, 'ai': {'hazir': self.ai_hazir, 'model': self.model, 'hata': self.ai_hata},
                 'mikrofon': self.mikrofon, 'surekli': self.surekli_dinleme, 'ses': self.ses_acik,
+                'ses_durumu': self.ses_durumu,
                 'mesgul': self.mesgul.is_set(), 'telemetri': self.son_telemetri,
                 'yarim_kalanlar': self.motor.yarim_kalanlar,
                 'gecmis': [{'id': g['id'], 'istek': g['istek'], 'durum': g['durum'], 'zaman': g['olusturma'],
@@ -391,7 +400,14 @@ class Panel:
                 'onay': self._onay_ozeti(self.onay_kutusu) if self.onay_kutusu else None,
                 'son_olay': self.son_olaylar[-1][0] if self.son_olaylar else 0}
 
+    def _hatirlatma_teslim(self, kayit: dict) -> None:
+        self.yayinla('hatirlatma', {'id': kayit['id'], 'metin': kayit['metin'], 'gec': kayit.get('gec', False)})
+        self.soyle(kayit['metin_soz'], 'hatirlatma')
+
     def baslat_arka_plan(self) -> None:
+        from ..zamanlayici import Zamanlayici
+        self.zamanlayici = Zamanlayici(self.motor.depo, teslim=self._hatirlatma_teslim, sahip=self.motor.sahip)
+        self.zamanlayici.baslat()
         threading.Thread(target=self._telemetri_dongusu, daemon=True).start()
         threading.Thread(target=self._ai_kontrol, daemon=True).start()
         threading.Thread(target=self._mikrofon_kontrol, daemon=True).start()
@@ -572,3 +588,5 @@ def calistir(pencere: bool = True, port: int = 0) -> None:
     finally:
         panel.motor.iptal_et()
         panel.surekli_dinleme = False
+        if getattr(panel, 'zamanlayici', None):
+            panel.zamanlayici.durdur()

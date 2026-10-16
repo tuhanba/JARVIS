@@ -7,7 +7,6 @@ hotkey actions stay a direct user command. Where nothing observable can be
 checked (a volume key press), the result is 'succeeded', not 'verified', and
 the spoken text says what was done, not what was achieved."""
 import datetime
-import time
 from pathlib import Path
 
 from .. import yollar
@@ -194,14 +193,3 @@ def notlari_sil(baglam):
     cikti = s.notlari_sil(onaylandi=True)
     import os
     return Sonuc(True, cikti, dogrulandi=not os.path.exists(s.NOT_DOSYASI))
-
-
-@_hizli('hatirlatici_kur', 'Belirtilen dakika sonra sesli hatırlatma kurar.',
-        {'dakika': {'type': 'number', 'exclusiveMinimum': 0, 'maximum': 100000}, 'mesaj': metin('Hatırlatılacak şey')},
-        ['dakika', 'mesaj'], YAZMA, True, tekrarlanabilir=True)
-def hatirlatici_kur(baglam, dakika, mesaj):
-    zamanlayici = getattr(baglam, 'zamanlayici', None)
-    if zamanlayici is not None:
-        kayit = zamanlayici.ekle(time.time() + dakika * 60, mesaj or 'süre doldu')
-        return Sonuc(True, kayit['metin'], dogrulandi=True, veri={'hatirlatma_id': kayit['id']})
-    return Sonuc(True, _sistem().hatirlatici_kur(dakika, mesaj))

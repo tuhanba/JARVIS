@@ -18,7 +18,7 @@ import platform
 import time
 from dataclasses import dataclass, field
 
-from . import yollar
+from . import arac_secimi, yollar
 from .araclar import KAYIT, Iptal
 from .araclar.temel import IptalJetonu
 from .ayarlar import Ayarlar
@@ -26,8 +26,11 @@ from .depo import BITMIS, Depo, sahip_kimligi
 from .izinler import Izinler
 from .llm import OllamaHatasi, OllamaIstemci
 from .niyet import Niyet
-from .yurutucu import (BASARILI, REDDEDILDI, DonguHatasi, GorevDurumu, Yurutucu,  # noqa: F401
-                       sonuc_ozeti)
+from .yurutucu import (BASARILI, REDDEDILDI, YAPILMADI, DonguHatasi, GorevDurumu, Yurutucu,  # noqa: F401
+                       eylem_istegi, sonuc_ozeti)
+
+EYLEMSIZ_UYARI = ('Hiçbir araç çağırmadın, bu yüzden bilgisayarda hiçbir şey yapılmadı. İstenen işlemi yapmak için '
+                  'gerekli aracı şimdi çağır; yapamıyorsan nedenini açıkça söyle. "Yaptım" deme.')
 
 TALIMAT = """Sen JARVIS'sin: {kullanici} adlı kullanıcının Windows bilgisayarında gerçek işler yapan, Türkçe konuşan asistan.
 
@@ -50,7 +53,7 @@ Kurallar:
 - Güncel bilgi gereken sorularda internette_ara kullan ve kaynağın adını söyle.
 
 Bağlam: {zaman}. İşletim sistemi: {isletim}. Ev klasörü: {ev}.
-{son_islemler}{hafiza}"""
+{son_islemler}{referanslar}{hafiza}"""
 
 DURDUR = {'dur', 'durdur', 'iptal', 'iptal et', 'vazgeç', 'stop', 'cancel'}  # kept for old imports
 
@@ -75,6 +78,9 @@ class Motor:
         self.sahip = sahip_kimligi()
         self.aktif = {}           # task id -> its cancel token
         self.oturum = []          # recent (istek, cevap) pairs for follow-ups
+        self.son_gruplar = []     # tool groups of the previous request (follow-ups keep them)
+        # What "onu", "o dosya", "o uygulama" can refer to: most recent last.
+        self.referanslar = {'dosya': [], 'uygulama': [], 'adres': []}
         self.yarim_kalanlar = self.depo.yarim_kalanlari_isaretle()
         self.yurutucu = Yurutucu(self.depo, self.izinler, lambda soru: self.onay(soru),
                                  lambda olay, veri: self.bildir(olay, veri), self.a)
@@ -92,13 +98,63 @@ class Motor:
             hafiza = ('Kullanıcı hakkında kalıcı hafıza (tarihli; çelişkide YENİ olan geçerlidir):\n' + '\n'.join(
                 f"- [{time.strftime('%d.%m.%Y', time.localtime(k['tarih']))}] {k['metin']}"
                 for k in kayitlar[-30:]))
+        referans = ''
+        dolu = {t: v for t, v in self.referanslar.items() if v}
+        if dolu:
+            adlar = {'dosya': 'dosyalar', 'uygulama': 'uygulamalar', 'adres': 'adresler'}
+            referans = ('Son bahsedilenler ("onu", "o dosya", "diğer klasör" bunlardan birini gösterir; birden çok '
+                        'aday uyuyorsa tek kısa soru sor): ' + '; '.join(
+                            f'{adlar[t]}: {", ".join(v[-3:])}' for t, v in dolu.items()) + '\n')
         import sistem
         return TALIMAT.format(kullanici=getpass.getuser(), zaman=sistem.saat_tarih(),
                               isletim=f'{platform.system()} {platform.release()}',
-                              ev=str(yollar.coz('ev')), son_islemler=son_metin, hafiza=hafiza)
+                              ev=str(yollar.coz('ev')), son_islemler=son_metin, referanslar=referans, hafiza=hafiza)
 
-    def _araclar(self) -> list:
-        return [a.sema() for a in KAYIT.values() if a.modele_acik]
+    def _araclar(self, adlar=None) -> list:
+        return [a.sema() for a in KAYIT.values() if a.modele_acik and (adlar is None or a.ad in adlar)]
+
+    def _referans_kaydet(self, ad: str, argumanlar: dict, sonuc) -> None:
+        if sonuc is None or not sonuc.basarili:
+            return
+        for tur, deger in (('dosya', sonuc.veri.get('yol')), ('uygulama', argumanlar.get('ad') if ad in (
+                'uygulama_ac', 'uygulama_kapat') else None), ('adres', argumanlar.get('adres'))):
+            if deger:
+                liste = self.referanslar[tur]
+                if deger in liste:
+                    liste.remove(deger)
+                liste.append(str(deger))
+                del liste[:-5]
+
+    def _baglam_kirp(self, gd: GorevDurumu, mesajlar: list, araclar: list) -> list:
+        """Fit the prompt into the context budget without touching the stored history:
+        1) shorten old tool outputs, 2) drop earlier-session turns, 3) shorten the rest.
+        When something was cut, a note with every goal's state is added so unresolved
+        goals and evidence are not lost."""
+        def tahmin(x):
+            return len(json.dumps(x, ensure_ascii=False)) // 3
+        butce = int(self.a.baglam * self.a.baglam_payi) - tahmin(araclar)
+        if tahmin(mesajlar) <= butce:
+            return mesajlar
+        kopya = [dict(m) for m in mesajlar]
+
+        def kisalt(m, sinir):
+            icerik = m.get('content') or ''
+            if m.get('role') == 'tool' and len(icerik) > sinir:
+                m['content'] = icerik[:sinir] + f'\n…[kısaltıldı: {len(icerik)} karakter; gerekirse aracı yeniden çağır]'
+        for m in kopya[:-4]:
+            kisalt(m, 600)
+        onceki_oturum = gd.gorev_basi - 1     # earlier-session messages between system and this request
+        while tahmin(kopya) > butce and onceki_oturum > 0:
+            del kopya[1]
+            onceki_oturum -= 1
+        if tahmin(kopya) > butce:
+            for m in kopya:
+                kisalt(m, 1500)
+        if gd.amaclar:
+            durumlar = '; '.join(f"{a['ozet']}: {a['durum']}" for a in gd.amaclar.values())
+            kopya.insert(1, {'role': 'system', 'content': f'Not: bağlam sığması için eski çıktılar kısaltıldı. '
+                                                           f'Bu görevdeki adımların durumu: {durumlar}'})
+        return kopya
 
     # ------------------------------------------------------------- cancellation
     def iptal_et(self, gid: str = None) -> int:
@@ -116,12 +172,18 @@ class Motor:
 
     # ------------------------------------------------------------- public
     def calistir(self, istek: str, kaynak: str = 'model') -> GorevSonucu:
-        gid = self.depo.gorev_olustur(istek, self.a.model(), kaynak=kaynak, sahip=self.sahip)
+        is_turu = self.a.is_turu(istek)
+        gid = self.depo.gorev_olustur(istek, self.a.model(is_turu), kaynak=kaynak, sahip=self.sahip)
+        gd = GorevDurumu(gid, is_turu=is_turu)
+        if arac_secimi.acik_mi():
+            katalog = {a.ad for a in KAYIT.values() if a.modele_acik}
+            gd.arac_adlari, self.son_gruplar = arac_secimi.sec(istek, self.son_gruplar, katalog)
         mesajlar = [{'role': 'system', 'content': self._talimat()}]
         for onceki_istek, onceki_cevap in self.oturum[-4:]:
             mesajlar += [{'role': 'user', 'content': onceki_istek}, {'role': 'assistant', 'content': onceki_cevap}]
+        gd.gorev_basi = len(mesajlar)
         mesajlar.append({'role': 'user', 'content': istek})
-        sonuc = self._dongu(GorevDurumu(gid), mesajlar, bekleyen=[])
+        sonuc = self._dongu(gd, mesajlar, bekleyen=[])
         self.oturum.append((istek, sonuc.cevap))
         return sonuc
 
@@ -134,6 +196,7 @@ class Motor:
         try:
             cs = self.yurutucu.cagri(gd, niyet.arac, dict(niyet.argumanlar), jeton, kaynak='hizli',
                                      son_tarih=self._son_tarih(gd))
+            self._referans_kaydet(niyet.arac, niyet.argumanlar, cs.sonuc)
             if cs.sonuc is None:
                 if cs.amac and cs.amac['durum'] == REDDEDILDI:
                     cevap = ('Tamam efendim, yapmadım.' if cs.karar == 'sor'
@@ -215,7 +278,7 @@ class Motor:
         gid = gd.gid
         jeton = self.aktif[gid] = IptalJetonu()
         son_tarih = self._son_tarih(gd)
-        araclar = self._araclar()
+        araclar = self._araclar(gd.arac_adlari)
 
         def butce():
             if jeton.is_set():
@@ -229,6 +292,7 @@ class Motor:
             return None
 
         def cagrilari_isle(cagrilar):
+            nonlocal araclar
             for cagri in cagrilar:
                 bitti = butce()           # every call in a batch is checked, not only the turn
                 if bitti:
@@ -236,6 +300,10 @@ class Motor:
                 fn = cagri.get('function', {})
                 cs = self.yurutucu.cagri(gd, fn.get('name', ''), fn.get('arguments') or {}, jeton,
                                          kaynak='model', son_tarih=son_tarih)
+                self._referans_kaydet(fn.get('name', ''), fn.get('arguments') or {}, cs.sonuc)
+                if fn.get('name') == arac_secimi.KESIF and gd.arac_adlari is not None:
+                    gd.arac_adlari = None                 # controlled expansion: whole catalogue from now on
+                    araclar = self._araclar()
                 mesajlar.append({'role': 'tool', 'tool_name': fn.get('name', ''), 'content': cs.metin})
                 self._kaydet(gd, mesajlar)
             return None
@@ -252,13 +320,31 @@ class Motor:
                 if gd.tur > self.a.max_adim * 2:
                     return self._bitir(gid, 'butce_asildi', 'Model çok fazla deneme yaptı, durdum.', mesajlar, gd)
                 self.bildir('dusunuyor', {'gorev': gid})
-                cevap = self.llm.sohbet(mesajlar, araclar, jeton)
+                cevap = self.llm.sohbet(self._baglam_kirp(gd, mesajlar, araclar), araclar, jeton, is_turu=gd.is_turu,
+                                        akis=lambda parca: self.bildir('parca', {'gorev': gid, 'metin': parca}))
+                if cevap.get('olcum'):
+                    try:
+                        self.depo.olcum_ekle(gid, gd.tur, cevap['olcum'], gd.is_turu, len(araclar))
+                    except Exception:
+                        pass        # a measurement must never break a task
                 asistan = {'role': 'assistant', 'content': cevap['content']}
                 if cevap['tool_calls']:
                     asistan['tool_calls'] = cevap['tool_calls']
                 mesajlar.append(asistan)
                 self._kaydet(gd, mesajlar)
                 if not cevap['tool_calls']:
+                    istek = mesajlar[gd.gorev_basi]['content'] if len(mesajlar) > gd.gorev_basi else ''
+                    yan_etki_var = any(not a['anahtar'].startswith(('okuma:', 'bilinmeyen:'))
+                                       for a in gd.amaclar.values())
+                    if not yan_etki_var and eylem_istegi(istek):
+                        if 'eylemsiz' not in gd.amaclar:
+                            # The model talked instead of acting: one bounded correction turn.
+                            gd.amaclar['eylemsiz'] = {'anahtar': 'eylemsiz', 'arac': '-', 'ozet': 'istenen işlem',
+                                                      'durum': YAPILMADI, 'deneme': 1, 'eylem_id': '',
+                                                      'cikti': 'model araç çağırmadan cevap verdi'}
+                            mesajlar.append({'role': 'user', 'content': EYLEMSIZ_UYARI})
+                            self._kaydet(gd, mesajlar)
+                            continue
                     durum, metin = sonuc_ozeti(gd, cevap['content'])
                     return self._bitir(gid, durum, metin, mesajlar, gd)
                 bitti = cagrilari_isle(cevap['tool_calls'])

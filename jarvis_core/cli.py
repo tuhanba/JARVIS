@@ -19,7 +19,8 @@ YARDIM = """Komutlar:
   /izin-yasakla <araç|*> [klasör]              /izin-sil <no>
   /program-ekle <ad>     programı izinli yap   /hafiza            kalıcı hafıza
   /hatirla <bilgi>       hafızaya ekle         /unut <parça>      hafızadan sil
-  /saglik                sistem raporu         /cikis
+  /saglik                sistem raporu         /olcumler          model hız ölçümleri
+  /cikis
 Görev çalışırken "dur" yazın veya Ctrl+C'ye basın."""
 
 
@@ -127,6 +128,17 @@ class Arayuz:
             print('  Kaydedildi.')
         elif k == '/unut' and len(parca) > 1:
             print(f"  {depo.hafiza_unut(satir.split(maxsplit=1)[1])} kayıt unutuldu.")
+        elif k == '/olcumler':
+            ozet = depo.olcum_ozeti()
+            if not ozet:
+                print('  Henüz ölçüm yok (model ile bir görev çalıştırın).')
+            for o in ozet:
+                def f(x, b=''):
+                    return f'{x:.2f}{b}' if x is not None else '-'
+                print(f"  {o['model']:<22} {'SOĞUK' if o['soguk'] else 'sıcak':<6} {o['tur_sayisi']:>4} tur  "
+                      f"ilk parça {f(o['ort_ilk'], ' sn')}  tur {f(o['ort_toplam'], ' sn')}  "
+                      f"üretim {f(o['token_hizi'], ' tok/sn')}  prompt {f(o['prompt_hizi'], ' tok/sn')}  "
+                      f"araç şeması {f(o['ort_arac'])}")
         elif k == '/saglik':
             from .saglik import rapor, yazdir
             yazdir(rapor())
@@ -144,6 +156,9 @@ class Arayuz:
             print(f'UYARI: {e}')
         if self.motor.yarim_kalanlar:
             print(f'Yarıda kalan görevler: {", ".join(self.motor.yarim_kalanlar)}  (sürdürmek için /devam <id>)')
+        from .zamanlayici import Zamanlayici
+        Zamanlayici(self.motor.depo, teslim=lambda k: print(f"\n  ⏰ {k['metin_soz']}\nSen: ", end='', flush=True),
+                    sahip=self.motor.sahip).baslat()
         from .acil import acil_durdurma_kur
         kisayol = acil_durdurma_kur(self.motor.iptal_et)
         if kisayol:

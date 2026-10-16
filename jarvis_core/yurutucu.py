@@ -22,6 +22,8 @@ from dataclasses import asdict, dataclass, field
 from .araclar import KAYIT, Baglam, Iptal, Sonuc
 from .araclar.temel import BASARISIZ, BELIRSIZ, IPTAL_EDILDI
 
+# A request that asked for an action but no tool did anything (the model only talked).
+YAPILMADI = 'yapilmadi'
 # Goal states. COZULDU = nothing left to do for this goal.
 DOGRULANDI, OKUNDU, TELAFI, BASARILI = 'dogrulandi', 'okundu', 'telafi_edildi', 'basarili_dogrulanmadi'
 HATA, REDDEDILDI, GECERSIZ, BELIRSIZ_ETKI, IPTAL = 'basarisiz', 'reddedildi', 'gecersiz', 'belirsiz', 'iptal'
@@ -43,6 +45,9 @@ class GorevDurumu:
     sayac: dict = field(default_factory=dict)            # call key -> times called (loop detection)
     amaclar: dict = field(default_factory=dict)          # goal key -> state
     gecen_sure: float = 0.0                              # seconds used before a restart
+    is_turu: str = 'genel'                               # model profile: genel | kod
+    arac_adlari: list = None                             # tools offered to the model (None = all)
+    gorev_basi: int = 1                                  # index of this task's user message
     baslangic: float = field(default_factory=time.monotonic, repr=False)
 
     def kontrol_noktasi(self) -> dict:
@@ -195,6 +200,8 @@ class Yurutucu:
         else:
             amac_durumu = DOGRULANDI if sonuc.dogrulandi is True else BASARILI
         amac = self._amac_yaz(gd, anahtar, ad, argumanlar, amac_durumu, sonuc.cikti, eylem_id)
+        if sonuc.basarili and yan_etkili and gd.amaclar.get('eylemsiz', {}).get('durum') == YAPILMADI:
+            gd.amaclar['eylemsiz']['durum'] = TELAFI
         if sonuc.basarili:
             # A schema error with this tool was corrected by a valid, successful call.
             gecersiz = gd.amaclar.get(f'gecersiz:{ad}')
@@ -288,6 +295,22 @@ _BASARI_IDDIASI = re.compile(r"\b(tamam(dır|landı)?|hallettim|bitti|başarıyl
                              r"oluşturuldu|açıldı|kopyalandı|\w+(?<!m[ae])(?<!m[ae]y)[dt][ıiuü]m)\b", re.IGNORECASE)
 
 
+_EYLEM = re.compile(
+    r"\b(oluştur|kaydet|taşı|kopyala|sil|aç|kapat|başlat|çalıştır|indir|gönder|yeniden adlandır|adlandır|"
+    r"düzenle|değiştir|kur|yükle|temizle|ayarla|arşivle|sıkıştır|dönüştür|yapıştır)"
+    r"(ır mısın|ır mısınız|ar mısın|abilir misin|ebilir misin|ın|in|un|ün|\b)")
+_YAZ = re.compile(r"(dosya|belge|not defter|\.txt|\.md|klasör|pencere|word|excel)\w*\b.*\byaz(ar mısın|ın|\b)|"
+                  r"\byaz\b.*\b(dosya|belge|klasör)")
+
+
+def eylem_istegi(istek: str) -> bool:
+    """Does the request ask for something to be done on the computer (not just an answer)?
+    "Bana bir şiir yaz" is not; "Belgeler'e not.txt oluştur, içine ... yaz" is."""
+    from .niyet import kucuk
+    k = kucuk(istek)
+    return bool(_EYLEM.search(k) or _YAZ.search(k))
+
+
 def basari_iddiasi(metin: str) -> bool:
     """Does the model's answer claim that it did something ("taşıdım", "kaydedildi")?"""
     from .niyet import kucuk
@@ -320,5 +343,5 @@ def sonuc_ozeti(gd: GorevDurumu, model_cevabi: str):
     return 'dogrulanamadi', cevap
 
 
-_DURUM_ADI = {HATA: 'başarısız', REDDEDILDI: 'izin verilmedi', GECERSIZ: 'geçersiz çağrı',
+_DURUM_ADI = {YAPILMADI: 'hiçbir işlem yapılmadı', HATA: 'başarısız', REDDEDILDI: 'izin verilmedi', GECERSIZ: 'geçersiz çağrı',
               BELIRSIZ_ETKI: 'sonucu belirsiz', IPTAL: 'iptal edildi'}

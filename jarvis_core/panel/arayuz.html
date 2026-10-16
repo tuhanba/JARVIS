@@ -463,8 +463,17 @@ function ekle(sinif, ust, govde, zaman) {
   $('akisSayi').textContent = ++ogeSayisi;
   return d;
 }
-let yazmaZamanlayici;
+let yazmaZamanlayici, canliMetin = '';
+// Real token stream from the model (no simulated typing): shown while it is generated.
+function canliYaz(parca) {
+  clearInterval(yazmaZamanlayici);
+  const y = $('yanit');
+  if (!y.dataset.canli) { canliMetin = ''; y.dataset.canli = '1'; y.innerHTML = '<span></span><span class="imlec"></span>'; }
+  canliMetin += parca; y.firstChild.textContent = canliMetin;
+}
 function yanitYaz(metin) {
+  const y0 = $('yanit');
+  if (y0.dataset.canli) { delete y0.dataset.canli; y0.innerHTML = '<span></span>'; y0.firstChild.textContent = metin; return; }
   clearInterval(yazmaZamanlayici);
   const y = $('yanit'); let i = 0;
   y.innerHTML = '<span></span><span class="imlec"></span>';
@@ -513,6 +522,7 @@ function olay(p) {
       uyg.classList.remove('mesgul');
       $('aktifSure').textContent = (v.sure || 0).toFixed(1) + ' sn'; gorevBaslangic = null;
       gorevBitti = v; break;
+    case 'parca': canliYaz(v.metin); break;
     case 'jarvis': {
       const b = gorevBitti && gorevBitti.durum ? `<span class="rozet ${gorevBitti.durum}">${SONUC_ADLARI[gorevBitti.durum] || gorevBitti.durum}</span>` : '';
       ekle('jarvis', 'JARVIS' + b, esc(v.metin), p.zaman); yanitYaz(v.metin); gorevBitti = null; break;
@@ -526,6 +536,7 @@ function olay(p) {
     case 'telemetri': telemetri(v); break;
     case 'ai': aiDurum(v); break;
     case 'mikrofon': mikrofon(v.var); break;
+    case 'ses_durumu': sesDurumu(v); break;
     case 'surekli': $('uyandirma').classList.toggle('acik', v.acik); break;
     case 'kapat': api('/api/kapat'); setTimeout(() => window.close(), 400); break;
   }
@@ -553,6 +564,13 @@ function aiDurum(a) {
   if (!a.hazir && a.hata) bildir(a.hata);
   if (uyg.dataset.durum === 'baslatiliyor') durumAyarla(a.hazir ? 'hazir' : 'hata');
 }
+// Shows truthfully what the voice uses: local, online (data leaves the computer) or nothing.
+function sesDurumu(d) {
+  if (!d) return;
+  const parcalar = [`Ses tanıma: ${d.stt || 'yok'}`, `Ses çıkışı: ${d.tts || 'yok (yalnız yazı)'}`];
+  $('cipMik').title = parcalar.join(' · ');
+  for (const u of (d.uyarilar || [])) ekle('bilgi', 'SES', esc(u), Date.now() / 1000);
+}
 function mikrofon(v) {
   $('cipMik').textContent = v ? 'HAZIR' : 'YOK'; $('nMik').className = 'nokta ' + (v ? 'ok' : 'uyari');
   $('mik').disabled = !v;
@@ -575,6 +593,7 @@ async function ilkYukleme() {
     ekle('bilgi', 'GEÇMİŞ', `${esc(g.istek)} <span class="rozet ${g.durum}">${SONUC_ADLARI[g.durum] || esc(g.durum)}</span>`, g.zaman);
   if (d.yarim_kalanlar && d.yarim_kalanlar.length) bildir(`Yarıda kalan görev var: ${d.yarim_kalanlar.join(', ')}`);
   if (d.onay) onayGoster(d.onay);
+  if (d.ses_durumu && d.ses_durumu.stt !== undefined) sesDurumu(d.ses_durumu);
   if (d.mesgul) uyg.classList.add('mesgul');
   sonOlay = d.son_olay || 0;
   durumAyarla(d.durum === 'baslatiliyor' && d.ai.hazir ? 'hazir' : d.durum);

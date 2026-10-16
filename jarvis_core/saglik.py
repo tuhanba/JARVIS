@@ -57,6 +57,21 @@ def deneme_uretimi(istemci, a) -> dict:
                 'hata': ollama_hata_aciklamasi(getattr(e, 'error', None) or str(e))}
 
 
+def model_ayrintisi(istemci, model: str) -> dict:
+    """Capabilities, quantization and trained context length as Ollama reports them (/api/show)."""
+    try:
+        g = istemci.show(model)
+    except Exception:
+        return {'yetenekler': [], 'nicemleme': None, 'baglam_uzunlugu': None, 'parametre': None}
+    bilgi = getattr(g, 'modelinfo', None) or getattr(g, 'model_info', None) or {}
+    baglam = next((v for k, v in dict(bilgi).items() if k.endswith('.context_length')), None)
+    ayrinti = getattr(g, 'details', None)
+    return {'yetenekler': list(g.capabilities or []),
+            'nicemleme': getattr(ayrinti, 'quantization_level', None),
+            'parametre': getattr(ayrinti, 'parameter_size', None),
+            'baglam_uzunlugu': baglam}
+
+
 def rapor() -> dict:
     a = Ayarlar()
     r = {}
@@ -81,11 +96,8 @@ def rapor() -> dict:
         import ollama
         c = ollama.Client(host=a.ollama_adres)
         for m in c.list().models:
-            try:
-                yet = list(c.show(m.model).capabilities or [])
-            except Exception:
-                yet = []
-            r['modeller'].append({'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1), 'yetenekler': yet})
+            bilgi = model_ayrintisi(c, m.model)
+            r['modeller'].append({'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1), **bilgi})
         r['deneme'] = deneme_uretimi(c, a)
         r['yuklu'] = [{'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1),
                        'vram_gb': round((m.size_vram or 0) / 2**30, 1)} for m in c.ps().models]
@@ -95,6 +107,11 @@ def rapor() -> dict:
         r['mikrofonlar'] = [_duzelt(ad) for ad in sr.Microphone.list_microphone_names()]
     except Exception as e:
         r['mikrofonlar'] = f'bilinmiyor ({e.__class__.__name__})'
+    try:
+        from .audio.secim import durum
+        r['ses'] = durum()
+    except Exception as e:
+        r['ses'] = {'stt': None, 'tts': None, 'uyarilar': [f'denetlenemedi: {e}']}
     try:
         requests.head('https://www.google.com', timeout=4)
         r['internet'] = True
@@ -120,7 +137,9 @@ def yazdir(r: dict) -> list:
         print(f"  Ollama          : {r['ollama_surum']}")
         for m in r['modeller']:
             isaret = '*' if m['ad'] == r['secili_model'] else ' '
-            print(f"   {isaret} {m['ad']:<24} {m['boyut_gb']:>5} GB  {', '.join(m['yetenekler'])}")
+            ek = ' '.join(x for x in (m.get('parametre'), m.get('nicemleme'),
+                                      f"bağlam {m['baglam_uzunlugu']}" if m.get('baglam_uzunlugu') else None) if x)
+            print(f"   {isaret} {m['ad']:<24} {m['boyut_gb']:>5} GB  {', '.join(m['yetenekler'])}  {ek}")
         adlar = [m['ad'] for m in r['modeller']]
         if r['secili_model'] not in adlar:
             sorunlar.append(f"Seçili model yok: ollama pull {r['secili_model']}")
@@ -140,6 +159,10 @@ def yazdir(r: dict) -> list:
     print(f"  Mikrofon        : {', '.join(mik[:3]) if isinstance(mik, list) and mik else mik or 'YOK'}")
     if not mik or not isinstance(mik, list):
         sorunlar.append('Mikrofon bulunamadı: yazı modu kullanılabilir (yazarak_baslat.bat).')
+    ses = r.get('ses') or {}
+    print(f"  Ses tanıma      : {ses.get('stt') or 'YOK'}")
+    print(f"  Ses çıkışı      : {ses.get('tts') or 'YOK (yalnız yazı)'}")
+    sorunlar += ses.get('uyarilar', [])
     print('\nSorunlar:' if sorunlar else '\nSorun bulunmadı.')
     for s in sorunlar:
         print(f'  - {s}')

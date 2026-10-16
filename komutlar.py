@@ -78,6 +78,11 @@ DIKTE = re.compile(r'^\s*(?:hey\s+)?(?:jarvis[,\s]*)?(?:şunu\s+|bunu\s+)?yaz(?:
                    r'^\s*(?:hey\s+)?(?:jarvis[,\s]*)?şunu\s+yaz\s+(.+)$', re.IGNORECASE | re.DOTALL)
 
 
+COK_AMACLI = re.compile(r'\b(ve|sonra|ardından|daha sonra|bir de|ayrıca)\b|,')
+EYLEM = re.compile(r'\b(aç|kapat|çal|oynat|ara|arat|yaz|taşı|sil|kopyala|kaydet|oku|bul|göster|kur|başlat|'
+                   r'listele|indir|gönder|hatırlat|kilitle)\b')
+
+
 def _yerel_komut(k: str, ham: str, beyin=None):
     """A Niyet (tool + arguments) for the executor, a canned reply (str), or None
     when the request should go to the model."""
@@ -86,6 +91,10 @@ def _yerel_komut(k: str, ham: str, beyin=None):
     dikte = DIKTE.match(ham)
     if dikte:
         return Niyet('aktif_pencereye_yaz', {'metin': (dikte.group(1) or dikte.group(2)).strip()})
+    # Several actions in one sentence ("Chrome'u aç ve Tarkan çal"): a fixed command would
+    # do only the first one, so the model plans it.
+    if ai_var and COK_AMACLI.search(k) and len(EYLEM.findall(k)) >= 2:
+        return None
 
     if ai_var and re.search(r'ekran(a|ı|da|daki)\b.*(bak|gör|ne var|oku|açıkla)|ekranda ne', k):
         return None  # the AI answers with its ekrani_gor tool
@@ -179,13 +188,22 @@ def _yerel_komut(k: str, ham: str, beyin=None):
         return Niyet('notlari_sil')
     if 'notlar' in k and ('oku' in k or 'neler' in k or 'göster' in k):
         return Niyet('notlari_oku')
-    sure = re.search(r'(\d+(?:[.,]\d+)?)\s*(saniye|dakika|saat)', k)
-    if sure and any(w in k for w in ('hatırlat', 'zamanlayıcı', 'alarm', 'sonra', 'kur')):
-        miktar = float(sure.group(1).replace(',', '.'))
-        dakika = {'saniye': miktar / 60, 'dakika': miktar, 'saat': miktar * 60}[sure.group(2)]
-        mesaj = _temizle(k[sure.end():], 'sonra', 'bana', 'hatırlat', 'zamanlayıcı', 'alarm', 'kur', 'diye')
-        if dakika > 0:
-            return Niyet('hatirlatici_kur', {'dakika': dakika, 'mesaj': mesaj})
+    if re.search(r'hatırlat|zamanlayıcı|alarm', k) and not re.search(r'hatırlatmalar|listele|iptal', k):
+        from jarvis_core.zamanlayici import zaman_coz
+        hedef = zaman_coz(k)
+        if hedef is not None:
+            mesaj = re.sub(r"(\d+(?:[.,]\d+)?)\s*(saniye|dakika|saat)\s*sonra|\b(yarın|bugün|öbür gün)\b|"
+                           r"\bsaat\s*\d{1,2}(?:[:.]\d{2})?(?:'?(?:de|da|te|ta))?|\b\d{1,2}[:.]\d{2}(?:'?(?:de|da|te|ta))?|"
+                           r"\b(bana|hatırlat|hatırlatır mısın|zamanlayıcı|alarm|kur|diye|lütfen|jarvis)\b", ' ', k)
+            mesaj = re.sub(r"\b\d{1,2}'?(?:de|da|te|ta)\b|\b(?:de|da|te|ta)\b|\bher (?:gün|sabah|akşam|hafta)\b", ' ',
+                           mesaj)
+            mesaj = re.sub(r'\s+', ' ', mesaj).strip(" .,'’")
+            tekrar = 'gunluk' if re.search(r'her gün|her sabah|her akşam', k) else (
+                'haftalik' if 'her hafta' in k else 'yok')
+            return Niyet('hatirlatici_kur', {'zaman': hedef.strftime('%Y-%m-%d %H:%M'), 'mesaj': mesaj or 'süre doldu',
+                                             'tekrar': tekrar})
+    if re.search(r'hatırlatmalar\w*.*(neler|listele|göster|oku)|hangi hatırlatma', k):
+        return Niyet('hatirlatmalari_listele')
 
     # power
     if 'kilitle' in k:

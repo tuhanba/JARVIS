@@ -8,6 +8,7 @@ Schema versions (PRAGMA user_version):
   1  original tables
   2  task checkpoint / input source / owner, step action ids and goal keys,
      quarantine for records that can no longer be parsed.
+  3  per-turn model measurements (olcumler).
 The file is copied to jarvis.db.v<N>.yedek before a migration runs.
 
 Connection ownership: one connection per Depo, shared across threads behind
@@ -24,7 +25,7 @@ from pathlib import Path
 
 from .gizlilik import maskele, maskele_nesne  # noqa: F401  (maskele re-exported for old imports)
 
-SURUM = 2
+SURUM = 3
 
 SEMA_V1 = """
 CREATE TABLE IF NOT EXISTS gorevler (
@@ -48,6 +49,10 @@ CREATE TABLE IF NOT EXISTS hafiza (
 GOREV_V2 = [('kontrol_noktasi', "TEXT DEFAULT '{}'"), ('kaynak', "TEXT DEFAULT 'model'"), ('sahip', 'TEXT')]
 ADIM_V2 = [('eylem_id', 'TEXT'), ('amac', 'TEXT'), ('deneme', 'INTEGER DEFAULT 1'), ('hata_turu', 'TEXT'),
            ('veri', 'TEXT'), ('sonuc_durumu', 'TEXT')]
+OLCUMLER = """CREATE TABLE IF NOT EXISTS olcumler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT, gorev_id TEXT, tur INTEGER, model TEXT, is_turu TEXT, arac_sayisi INTEGER,
+    toplam_sn REAL, ilk_parca_sn REAL, yukleme_sn REAL, prompt_sn REAL, uretim_sn REAL, prompt_token INTEGER,
+    uretim_token INTEGER, soguk INTEGER, tarih REAL NOT NULL)"""
 KARANTINA = """CREATE TABLE IF NOT EXISTS karantina (
     id INTEGER PRIMARY KEY AUTOINCREMENT, tablo TEXT NOT NULL, kayit_id TEXT NOT NULL, alan TEXT NOT NULL,
     veri TEXT, sebep TEXT NOT NULL, tarih REAL NOT NULL)"""
@@ -110,6 +115,7 @@ class Depo:
                 if ad not in mevcut:
                     self._db.execute(f'ALTER TABLE {tablo} ADD COLUMN {ad} {tur}')
         self._db.execute(KARANTINA)
+        self._db.execute(OLCUMLER)
         self._db.execute('CREATE INDEX IF NOT EXISTS adim_eylem ON adimlar(gorev_id, amac)')
         self._karantinaya_al()
         self._db.execute(f'PRAGMA user_version={SURUM}')
@@ -177,8 +183,6 @@ class Depo:
                 continue
             self.gorev_guncelle(r['id'], durum='yarida_kaldi')
             ids.append(r['id'])
-        ids += [r['id'] for r in self._calistir("SELECT id FROM gorevler WHERE durum='yarida_kaldi'").fetchall()
-                if r['id'] not in ids]
         return ids
 
     def gorevi_sahiplen(self, gid: str, sahip: str) -> bool:
@@ -227,6 +231,24 @@ class Depo:
         return [dict(r) for r in self._calistir(
             "SELECT arac, argumanlar, cikti, dogrulandi FROM adimlar WHERE durum='tamam' "
             "ORDER BY id DESC LIMIT ?", (sinir,))][::-1]
+
+    # ------------------------------------------------------------- measurements
+    def olcum_ekle(self, gid: str, tur: int, olcum: dict, is_turu: str = '', arac_sayisi: int = 0) -> None:
+        self._calistir('INSERT INTO olcumler (gorev_id, tur, model, is_turu, arac_sayisi, toplam_sn, ilk_parca_sn, '
+                       'yukleme_sn, prompt_sn, uretim_sn, prompt_token, uretim_token, soguk, tarih) '
+                       'VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+                       (gid, tur, olcum.get('model'), is_turu, arac_sayisi, olcum.get('toplam_sn'),
+                        olcum.get('ilk_parca_sn'), olcum.get('yukleme_sn'), olcum.get('prompt_sn'),
+                        olcum.get('uretim_sn'), olcum.get('prompt_token'), olcum.get('uretim_token'),
+                        int(bool(olcum.get('soguk'))), time.time()))
+
+    def olcum_ozeti(self, sinir: int = 200) -> list:
+        """Averages per model, warm and cold starts reported separately."""
+        return [dict(r) for r in self._calistir(
+            'SELECT model, soguk, count(*) AS tur_sayisi, avg(toplam_sn) AS ort_toplam, avg(ilk_parca_sn) AS ort_ilk, '
+            'avg(yukleme_sn) AS ort_yukleme, sum(uretim_token) / nullif(sum(uretim_sn), 0) AS token_hizi, '
+            'sum(prompt_token) / nullif(sum(prompt_sn), 0) AS prompt_hizi, avg(arac_sayisi) AS ort_arac '
+            'FROM (SELECT * FROM olcumler ORDER BY id DESC LIMIT ?) GROUP BY model, soguk', (sinir,))]
 
     # ------------------------------------------------------------- memory
     def hafiza_ekle(self, metin: str, kaynak: str, tur: str = 'tercih') -> int:

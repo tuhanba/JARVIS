@@ -156,9 +156,9 @@ def test_gizli_bilgili_kontrol_noktasi_gecerli_json(motor_yap, ev, istek):
     s = m.calistir(istek)
     ham = m.depo.gorev(s.gorev_id)['mesajlar']
     mesajlar = json.loads(ham)            # must stay valid JSON
-    assert mesajlar[-2]['role'] == 'user'
+    kullanici = next(x for x in mesajlar if x['role'] == 'user')
     gizli = istek.split(':', 1)[-1].split('=', 1)[-1].replace('kaydet', '').strip().strip('"')
-    assert gizli.split()[0] not in mesajlar[-2]['content'] and '****' in mesajlar[-2]['content']
+    assert gizli.split()[0] not in kullanici['content'] and '****' in kullanici['content']
     assert gizli.split()[0] not in m.depo.gorev(s.gorev_id)['istek']
 
 
