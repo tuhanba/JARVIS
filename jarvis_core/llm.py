@@ -9,6 +9,18 @@ import requests
 from .araclar.temel import Iptal
 
 
+def ollama_hata_aciklamasi(hata: str) -> str:
+    """Turn Ollama runner crashes into something the user can act on."""
+    kucuk = (hata or '').lower()
+    if 'cuda' in kucuk or 'llama-server process has terminated' in kucuk or 'runner process' in kucuk:
+        return ('Ollama modeli ekran kartında çalıştırırken çöktü (sürücü veya CUDA sorunu). NVIDIA sürücüsünü '
+                'güncelleyip bilgisayarı yeniden başlatın. Ayrıntı: ' + hata[:200])
+    if 'out of memory' in kucuk or 'requires more system memory' in kucuk:
+        return ('Model için bellek yetmedi. .env içinde OLLAMA_BAGLAM değerini küçültün (ör. 8192) veya daha '
+                'küçük bir model seçin (qwen3.5:4b). Ayrıntı: ' + hata[:200])
+    return f'Ollama hatası: {hata}'
+
+
 class OllamaHatasi(Exception):
     """Message is meant to be shown / spoken to the user as is."""
 
@@ -107,7 +119,7 @@ class OllamaIstemci:
             if isinstance(e, ollama.ResponseError):
                 if e.status_code == 404:
                     raise OllamaHatasi(f'"{model}" modeli yüklü değil. Komut satırında: ollama pull {model}')
-                raise OllamaHatasi(f'Ollama hatası: {e.error}')
+                raise OllamaHatasi(ollama_hata_aciklamasi(e.error))
             ad = e.__class__.__name__
             if 'Timeout' in ad:
                 raise OllamaHatasi(f'Ollama {self.a.llm_zaman_asimi} saniyede yanıt vermedi.')

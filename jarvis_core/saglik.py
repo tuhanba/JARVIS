@@ -41,6 +41,21 @@ def gpu_bilgisi() -> list:
     return []
 
 
+def deneme_uretimi(istemci, a) -> dict:
+    """Actually run the selected model once: a listed model can still crash on load."""
+    import time
+    model = a.model()
+    t0 = time.time()
+    try:
+        cevap = istemci.generate(model=model, prompt='Sadece "tamam" yaz.', think=False,
+                                 options={'num_ctx': a.baglam, 'num_predict': 5}, keep_alive='5m')
+        return {'basarili': True, 'sure': time.time() - t0, 'metin': (cevap.response or '').strip()[:30]}
+    except Exception as e:
+        from .llm import ollama_hata_aciklamasi
+        return {'basarili': False, 'sure': time.time() - t0,
+                'hata': ollama_hata_aciklamasi(getattr(e, 'error', None) or str(e))}
+
+
 def rapor() -> dict:
     a = Ayarlar()
     r = {}
@@ -70,7 +85,9 @@ def rapor() -> dict:
             except Exception:
                 yet = []
             r['modeller'].append({'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1), 'yetenekler': yet})
-        r['yuklu'] = [{'ad': m.model, 'vram_gb': round((m.size_vram or 0) / 2**30, 1)} for m in c.ps().models]
+        r['deneme'] = deneme_uretimi(c, a)
+        r['yuklu'] = [{'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1),
+                       'vram_gb': round((m.size_vram or 0) / 2**30, 1)} for m in c.ps().models]
     r['secili_model'] = a.model()
     try:
         import speech_recognition as sr
@@ -108,8 +125,16 @@ def yazdir(r: dict) -> list:
             sorunlar.append(f"Seçili model yok: ollama pull {r['secili_model']}")
         elif 'tools' not in next(m for m in r['modeller'] if m['ad'] == r['secili_model'])['yetenekler']:
             sorunlar.append(f"{r['secili_model']} araç çağırmayı desteklemiyor.")
+        d = r.get('deneme')
+        if d and d['basarili']:
+            print(f"  Deneme üretimi : çalıştı ({d['sure']:.1f} sn, yükleme dahil)")
+        elif d:
+            print(f"  Deneme üretimi : BAŞARISIZ ({d['sure']:.1f} sn)")
+            sorunlar.append(d['hata'])
         for y in r.get('yuklu', []):
-            print(f"     bellekte: {y['ad']} ({y['vram_gb']} GB ekran kartında)")
+            oran = round(100 * y['vram_gb'] / y['boyut_gb']) if y['boyut_gb'] else 0
+            print(f"     bellekte: {y['ad']} {y['boyut_gb']} GB, Ollama'ya göre %{oran} ekran kartında"
+                  + ('' if oran >= 99 else ' (bir kısmı işlemcide: yavaş; OLLAMA_BAGLAM küçültülebilir)'))
     mik = r['mikrofonlar']
     print(f"  Mikrofon        : {', '.join(mik[:3]) if isinstance(mik, list) and mik else mik or 'YOK'}")
     if not mik or not isinstance(mik, list):
