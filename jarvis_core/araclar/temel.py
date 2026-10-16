@@ -31,10 +31,16 @@ class Sonuc:
 class Baglam:
     """Passed to every tool: cancellation and cancellable subprocesses."""
 
-    def __init__(self, iptal: threading.Event, depo=None, izinler=None) -> None:
+    def __init__(self, iptal: threading.Event, depo=None, izinler=None, bildir=None) -> None:
         self.iptal = iptal
         self.depo = depo
         self.izinler = izinler
+        self._bildir = bildir
+
+    def ilerleme(self, metin: str) -> None:
+        """Progress line for long tools (downloads); shown live in the panel."""
+        if self._bildir:
+            self._bildir(metin)
 
     def kontrol(self) -> None:
         if self.iptal.is_set():
@@ -73,6 +79,11 @@ class Arac:
     zaten_yapildi: Optional[Callable[[dict], bool]] = None
     # Output comes from outside (web pages, files): it is data, never instructions.
     guvenilmez_cikti: bool = False
+    # Optional: risk computed from the arguments (e.g. opening an .exe is 'sistem').
+    risk_belirle: Optional[Callable[[dict], str]] = None
+    # Optional: this call stays allowed even after untrusted content was read
+    # (only for creating new, reversible things in safe folders - e.g. writing a report).
+    harici_sonrasi_serbest: Optional[Callable[[dict], bool]] = None
 
     def sema(self) -> dict:
         return {'type': 'function', 'function': {

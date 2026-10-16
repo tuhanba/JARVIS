@@ -348,7 +348,8 @@ const ARAC_ADLARI = {
   pano_oku: 'Pano okunuyor', pano_yaz: 'Panoya kopyalanıyor', saat_tarih: 'Saat okunuyor', sistem_durumu: 'Sistem ölçülüyor',
   hava_durumu: 'Hava durumu alınıyor', doviz_kuru: 'Kur alınıyor', haberler: 'Haberler alınıyor', internette_ara: 'İnternette aranıyor',
   web_sayfasi_oku: 'Web sayfası okunuyor', program_calistir: 'Program çalıştırılıyor', hafizaya_kaydet: 'Hafızaya kaydediliyor',
-  hafizayi_listele: 'Hafıza okunuyor', hafizadan_unut: 'Hafızadan siliniyor', ekrani_gor: 'Ekran inceleniyor'
+  hafizayi_listele: 'Hafıza okunuyor', hafizadan_unut: 'Hafızadan siliniyor', ekrani_gor: 'Ekran inceleniyor',
+  belge_oku: 'Belge okunuyor', rapor_yaz: 'Rapor yazılıyor', dosya_indir: 'Dosya indiriliyor', dosya_ac: 'Dosya açılıyor'
 };
 const DURUMLAR = {
   baslatiliyor: ['BAŞLATILIYOR', 'sistem başlatılıyor', '--cyan', 1],
@@ -491,6 +492,10 @@ function olay(p) {
     case 'arac_sonuc':
       if (sonArac) { sonArac.classList.add(v.basarili ? 'ok' : 'hata');
         sonArac.querySelector('.sonuc').textContent = (v.basarili ? '✓ ' : '✗ ') + (v.cikti || '').replace(/\s+/g, ' ').slice(0, 220); }
+      break;
+    case 'ilerleme':
+      if (sonArac) sonArac.querySelector('.sonuc').textContent = '⟳ ' + (v.metin || '');
+      $('durumSerit').textContent = `${ARAC_ADLARI[v.arac] || v.arac} · ${v.metin}`;
       break;
     case 'gorev_bitti':
       uyg.classList.remove('mesgul');

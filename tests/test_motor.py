@@ -216,3 +216,15 @@ def test_internet_kesik(monkeypatch, ev):
     monkeypatch.setattr(ddgs, 'DDGS', Kopuk)
     s = KAYIT['internette_ara'].calistir(Baglam(threading.Event()), sorgu='x')
     assert not s.basarili and 'internet' in s.cikti
+
+
+def test_harici_icerikten_sonra_yeni_rapor_serbest_ama_tasima_sorar(motor_yap, ev):
+    (ev / 'Downloads' / 'not.txt').write_text('içerik')
+    m = motor_yap([[('dosya_oku', {'yol': 'İndirilenler/not.txt'})],
+                   [('dosya_yaz', {'yol': 'Belgeler/ozet.txt', 'icerik': 'özet'})],
+                   [('dosya_yaz', {'yol': 'Belgeler/ozet.txt', 'icerik': 'yeni', 'uzerine_yaz': True})],
+                   [('dosya_tasi', {'kaynak': 'İndirilenler/not.txt', 'hedef': 'Belgeler'})], 'Tamam.'])
+    m.calistir('özetle')
+    assert (ev / 'Documents' / 'ozet.txt').read_text() == 'özet'   # new file: allowed
+    assert len(m.sorular) == 2                                         # overwrite + move: asked
+    assert (ev / 'Downloads' / 'not.txt').exists()

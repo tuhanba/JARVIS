@@ -79,23 +79,25 @@ class Izinler:
             if kural['karar'] == 'red' and eslesir(kural):
                 return 'red', 'kullanıcı kuralı bunu yasaklıyor'
 
-        if arac.risk in HER_SEFERINDE_SOR:
-            return 'sor', f'{arac.risk} işlemi her seferinde onay ister'
+        # Some tools decide their risk from the arguments (opening a .exe vs a .pdf).
+        risk = arac.risk_belirle(argumanlar) if arac.risk_belirle else arac.risk
+        if risk in HER_SEFERINDE_SOR:
+            return 'sor', f'{risk} işlemi her seferinde onay ister'
 
         for kural in self.veri['kurallar']:
             if kural['karar'] == 'izin' and eslesir(kural):
                 return 'izin', 'kullanıcı kuralı'
 
-        if arac.risk == OKUMA:
+        if risk == OKUMA:
             return 'izin', 'okuma'
         if arac.ad == 'metin_yaz' and TERMINAL.search(str(argumanlar.get('pencere', ''))):
             return 'sor', 'terminal penceresine yazılan metin komut olarak çalışabilir'
-        if arac.risk == YAZMA:
+        if risk == YAZMA:
             kokler = yollar.guvenli_kokler()
             if all(any(yollar.icinde_mi(y, k) for k in kokler) for y in yollar_):
                 return 'izin', 'güvenli klasör'
             return 'sor', 'güvenli klasörlerin dışına yazma'
-        if arac.risk == PROGRAM:
+        if risk == PROGRAM:
             program = PureWindowsPath(str(argumanlar.get('program', ''))).stem.lower()  # handles \ and /
             if program in KABUKLAR:
                 return 'red', f'{program} bir komut kabuğu; JARVIS kabuk komutu çalıştırmaz'
@@ -122,4 +124,4 @@ class Izinler:
             if program in [p.lower() for p in self.veri['programlar']]:
                 return 'izin', 'izinli program'
             return 'sor', f'{program} izinli programlar listesinde değil'
-        return 'sor', arac.risk
+        return 'sor', risk

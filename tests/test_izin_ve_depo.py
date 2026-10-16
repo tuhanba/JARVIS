@@ -26,12 +26,13 @@ def test_kullanici_kurali_ve_yasak(motor_yap, ev, tmp_path):
 def test_gizli_bilgiler_maskelenir(motor_yap, ev):
     assert maskele('şifre: Gizli123 ve token=abc') == 'şifre: **** ve token=****'
     assert 'ghp_' not in maskele('anahtar ghp_aaaaaaaaaaaaaaaaaaaaaaaa')
-    m = motor_yap([[('dosya_yaz', {'yol': 'Belgeler/a.txt', 'icerik': 'parola: 1234'})], 'Tamam.'])
-    m.calistir("wifi parola: 1234 olarak not et")
+    # A value that cannot occur in timestamps or ids (an earlier "1234" matched a Unix time).
+    m = motor_yap([[('dosya_yaz', {'yol': 'Belgeler/a.txt', 'icerik': 'parola: Qx7Zk9Wv'})], 'Tamam.'])
+    m.calistir("wifi parola: Qx7Zk9Wv olarak not et")
     import sqlite3
     db = sqlite3.connect(m.a.veritabani)
     dokum = '\n'.join(str(r) for t in ('gorevler', 'adimlar') for r in db.execute(f'select * from {t}'))
-    assert '1234' not in dokum
+    assert 'Qx7Zk9Wv' not in dokum
 
 
 def test_hafiza_kaynak_tarih_unutma(motor_yap, ev):

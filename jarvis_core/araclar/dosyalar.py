@@ -111,7 +111,8 @@ def _yazildi_mi(argumanlar):
       {'yol': metin('Dosyanın yolu, ör. "Belgeler/alisveris.txt"'),
        'icerik': metin('Dosyaya yazılacak metin'),
        'uzerine_yaz': {'type': 'boolean', 'description': 'Dosya varsa üzerine yazılsın mı'}},
-      ['yol', 'icerik'], risk=YAZMA, yan_etki=True, yol_argumanlari=('yol',), zaten_yapildi=_yazildi_mi)
+      ['yol', 'icerik'], risk=YAZMA, yan_etki=True, yol_argumanlari=('yol',), zaten_yapildi=_yazildi_mi,
+      harici_sonrasi_serbest=lambda a: not a.get('uzerine_yaz'))
 def dosya_yaz(baglam, yol, icerik, uzerine_yaz=False):
     p = yollar.coz(yol)
     yedek = None
@@ -135,7 +136,7 @@ def dosya_yaz(baglam, yol, icerik, uzerine_yaz=False):
 @arac('klasor_olustur', 'Yeni bir klasör oluşturur.',
       {'yol': metin('Klasör yolu, ör. "Belgeler/Faturalar"')},
       ['yol'], risk=YAZMA, yan_etki=True, yol_argumanlari=('yol',),
-      zaten_yapildi=lambda a: yollar.coz(a['yol']).is_dir())
+      zaten_yapildi=lambda a: yollar.coz(a['yol']).is_dir(), harici_sonrasi_serbest=lambda a: True)
 def klasor_olustur(baglam, yol):
     p = yollar.coz(yol)
     vardi = p.is_dir()

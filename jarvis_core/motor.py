@@ -237,7 +237,8 @@ class Motor:
                     return 'BAŞARILI, DOĞRULANDI: bu işlem yeniden başlatmadan önce zaten gerçekleşmişti, tekrarlanmadı.'
 
         karar, sebep = self.izinler.karar(arac, argumanlar)
-        if karar == 'izin' and arac.yan_etki and durum['kirli']:
+        if karar == 'izin' and arac.yan_etki and durum['kirli'] and not (
+                arac.harici_sonrasi_serbest and arac.harici_sonrasi_serbest(argumanlar)):
             karar, sebep = 'sor', 'harici içerik okunduktan sonra yapılan işlem'
         if karar == 'red':
             self._kaydet_reddedilen(gid, durum, ad, argumanlar, sebep)
@@ -280,7 +281,8 @@ class Motor:
     def _zamanli_calistir(self, arac, argumanlar: dict) -> Sonuc:
         """Run a tool in a worker thread so timeout and cancel are enforced from outside."""
         kutu = {}
-        baglam = Baglam(self.iptal, depo=self.depo, izinler=self.izinler)
+        baglam = Baglam(self.iptal, depo=self.depo, izinler=self.izinler,
+                        bildir=lambda m: self.bildir('ilerleme', {'arac': arac.ad, 'metin': m}))
 
         def is_parcacigi():
             try:

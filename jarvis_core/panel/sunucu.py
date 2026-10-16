@@ -83,6 +83,8 @@ class Panel:
             self.yayinla('arac', {'arac': veri['arac'], 'argumanlar': veri['argumanlar']})
         elif olay == 'arac_sonuc':
             self.yayinla('arac_sonuc', veri)
+        elif olay == 'ilerleme':
+            self.yayinla('ilerleme', veri)
 
     # ------------------------------------------------------------- fast commands
     def _komutlar_hazirla(self) -> None:
