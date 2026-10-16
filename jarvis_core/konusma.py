@@ -6,9 +6,10 @@ Engines, in order of preference (JARVIS_TTS in .env):
 Windows' built-in SAPI voices are only used if a Turkish one is installed:
 an English voice reading Turkish text is worse than silence.
 
-The "JARVIS" effect (JARVIS_SES_EFEKT=1) is signal processing on our own
-output - lower, fuller tone, presence lift, a faint metallic sheen and a
-short room - not an imitation of any real person's voice.
+The "JARVIS" character (JARVIS_SES_KARAKTER=hafif|jarvis|belirgin) is signal
+processing on our own output - deeper, more measured, presence lift, a subtle
+digital double, a faint metallic sheen, a short room and pauses between
+sentences. It is not an imitation of any real person's voice.
 
     python -m jarvis_core.konusma --indir           # download the voice model
     python -m jarvis_core.konusma "Merhaba efendim"  # speak / test
@@ -78,54 +79,85 @@ def _piper_ses():
 
 # ------------------------------------------------------------------ synthesis
 
-def piper_sentezle(metin: str):
+# Voice character presets. Final speaking time = hiz / perde (both < 1 lower the
+# pitch or speed things up), so "jarvis" ends up ~8% slower and ~9% deeper.
+KARAKTERLER = {
+    'hafif':    dict(perde=0.95, hiz=0.97, sicaklik=0.25, parlaklik=0.12, koro=0.00, oda=0.8, sus=0.22),
+    'jarvis':   dict(perde=0.91, hiz=0.98, sicaklik=0.35, parlaklik=0.18, koro=0.16, oda=1.0, sus=0.32),
+    'belirgin': dict(perde=0.88, hiz=1.00, sicaklik=0.45, parlaklik=0.28, koro=0.28, oda=1.3, sus=0.38),
+}
+
+
+def karakter() -> dict:
+    k = dict(KARAKTERLER.get(os.getenv('JARVIS_SES_KARAKTER', 'jarvis'), KARAKTERLER['jarvis']))
+    # individual .env overrides still win
+    for anahtar, ortam in (('perde', 'JARVIS_SES_PERDE'), ('hiz', 'JARVIS_SES_HIZ')):
+        if os.getenv(ortam):
+            k[anahtar] = float(os.getenv(ortam))
+    return k
+
+
+def piper_sentezle(metin: str, hiz: float = 0.98):
     """Returns (samples float32 -1..1, sample_rate)."""
     from piper import SynthesisConfig
     ses = _piper_ses()
-    hiz = float(os.getenv('JARVIS_SES_HIZ', '0.95'))      # <1 faster; the effect slows it back down
     parcalar = [p.audio_float_array for p in ses.synthesize(metin, syn_config=SynthesisConfig(length_scale=hiz))]
     if not parcalar:
         return np.zeros(0, dtype=np.float32), ses.config.sample_rate
     return np.concatenate(parcalar).astype(np.float32), ses.config.sample_rate
 
 
-def jarvis_efekti(x: np.ndarray, sr: int) -> np.ndarray:
+def _kaydir(x: np.ndarray, ornek: int) -> np.ndarray:
+    y = np.zeros_like(x)
+    if ornek < len(x):
+        y[ornek:] = x[:len(x) - ornek]
+    return y
+
+
+def _yeniden_ornekle(x: np.ndarray, oran: float) -> np.ndarray:
+    n = max(1, int(len(x) / oran))
+    return np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
+
+
+def jarvis_efekti(x: np.ndarray, sr: int, k: dict = None) -> np.ndarray:
+    """Calm, deeper, clean 'system' voice. Pure signal processing on our own TTS output."""
     if x.size == 0:
         return x
-    # 1) Slightly lower, fuller voice: resample so playback is ~5% lower in pitch.
-    perde = float(os.getenv('JARVIS_SES_PERDE', '0.95'))
-    n = int(len(x) / perde)
-    x = np.interp(np.linspace(0, len(x) - 1, n), np.arange(len(x)), x).astype(np.float32)
+    k = k or karakter()
+    # 1) Deeper and more measured: resample (lowers pitch and slows slightly).
+    x = _yeniden_ornekle(x, k['perde'])
 
-    # 2) EQ in the frequency domain: cut rumble, warm low-mids, lift presence/air.
+    # 2) EQ: cut rumble, chest warmth, less boxiness, clear presence and some air.
     X = np.fft.rfft(x)
     f = np.fft.rfftfreq(len(x), 1 / sr)
-    kazanc = np.ones_like(f)
-    kazanc *= 1 / np.sqrt(1 + (80 / np.maximum(f, 1)) ** 4)               # high-pass 80 Hz
-    kazanc *= 1 + 0.25 * np.exp(-((f - 180) / 90) ** 2)                    # chest warmth
-    kazanc *= 1 - 0.18 * np.exp(-((f - 500) / 200) ** 2)                    # remove boxiness
-    kazanc *= 1 + 0.45 * np.exp(-((f - 3200) / 1200) ** 2)                  # clarity
-    kazanc *= 1 + 0.30 * np.exp(-((f - 8000) / 2500) ** 2)                  # air
+    kazanc = 1 / np.sqrt(1 + (75 / np.maximum(f, 1)) ** 4)
+    kazanc *= 1 + k['sicaklik'] * np.exp(-((f - 160) / 80) ** 2)
+    kazanc *= 1 - 0.20 * np.exp(-((f - 480) / 180) ** 2)
+    kazanc *= 1 + 0.45 * np.exp(-((f - 3000) / 1100) ** 2)
+    kazanc *= 1 + 0.30 * np.exp(-((f - 7500) / 2300) ** 2)
     x = np.fft.irfft(X * kazanc, n=len(x)).astype(np.float32)
 
-    # 3) Faint metallic sheen: very short comb (flanger-like, static).
-    d = int(sr * 0.0045)
-    parlak = np.zeros_like(x)
-    parlak[d:] = x[:-d]
-    x = x + 0.22 * parlak
+    # 3) Digital layer: a slightly detuned, delayed double (subtle chorus) ...
+    if k['koro']:
+        cift = _yeniden_ornekle(x, 1.006)[:len(x)]
+        cift = np.pad(cift, (0, len(x) - len(cift)))
+        x = x + k['koro'] * _kaydir(cift, int(sr * 0.011))
+    # ... and a faint metallic comb.
+    x = x + k['parlaklik'] * _kaydir(x, int(sr * 0.0045))
 
-    # 4) Small, clean room so it sounds like it comes from the space, not a phone.
-    oda = np.zeros(len(x) + int(sr * 0.12), dtype=np.float32)
+    # 4) Short clean room.
+    kuyruk = int(sr * 0.14)
+    oda = np.zeros(len(x) + kuyruk, dtype=np.float32)
     oda[:len(x)] += x
-    for gecikme, g in ((0.019, .16), (0.031, .12), (0.047, .09), (0.071, .06), (0.097, .04)):
-        k = int(sr * gecikme)
-        oda[k:k + len(x)] += g * x
+    for gecikme, g in ((0.017, .15), (0.029, .12), (0.043, .09), (0.067, .06), (0.093, .045), (0.121, .03)):
+        d = int(sr * gecikme)
+        oda[d:d + len(x)] += g * k['oda'] * x
     x = oda
 
-    # 5) Gentle compression + normalise to -1 dBFS.
-    x = np.tanh(1.6 * x) / np.tanh(1.6)
-    tepe = np.max(np.abs(x)) or 1.0
-    return (x / tepe * 0.89).astype(np.float32)
+    # 5) Gentle compression, -1 dBFS, then a measured pause after the sentence.
+    x = np.tanh(1.7 * x) / np.tanh(1.7)
+    x = x / (np.max(np.abs(x)) or 1.0) * 0.89
+    return np.concatenate([x, np.zeros(int(sr * k['sus']), dtype=np.float32)]).astype(np.float32)
 
 
 def wav_yaz(x: np.ndarray, sr: int, yol: str) -> None:
@@ -138,9 +170,11 @@ def wav_yaz(x: np.ndarray, sr: int, yol: str) -> None:
 
 def sentezle_dosyaya(metin: str) -> str:
     """Synthesize with Piper (+ effect) into a temp WAV and return its path."""
-    x, sr = piper_sentezle(metin)
-    if os.getenv('JARVIS_SES_EFEKT', '1') == '1':
-        x = jarvis_efekti(x, sr)
+    k = karakter()
+    efekt = os.getenv('JARVIS_SES_EFEKT', '1') == '1'
+    x, sr = piper_sentezle(metin, k['hiz'] if efekt else 1.0)
+    if efekt:
+        x = jarvis_efekti(x, sr, k)
     fd, yol = tempfile.mkstemp(suffix='.wav')
     os.close(fd)
     wav_yaz(x, sr, yol)
