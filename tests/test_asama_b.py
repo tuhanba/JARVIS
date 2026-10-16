@@ -104,7 +104,7 @@ def test_baglam_butcesi_eski_ciktilari_kisaltir_kaydi_bozmaz(motor_yap, ev):
 
 
 def test_referanslar_promptta(motor_yap, ev):
-    (ev / 'Downloads' / 'fatura.pdf').write_text('x')
+    (ev / 'Downloads' / 'fatura.pdf').write_text('x', encoding='utf-8')
     m = motor_yap([[('dosya_tasi', {'kaynak': 'İndirilenler/fatura.pdf', 'hedef': 'Belgeler'})], 'Taşıdım.',
                    'Hangi klasöre?'])
     m.calistir('faturayı Belgeler’e taşı')
