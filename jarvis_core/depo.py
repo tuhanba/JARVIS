@@ -27,7 +27,8 @@ CREATE TABLE IF NOT EXISTS adimlar (
 CREATE INDEX IF NOT EXISTS adim_anahtar ON adimlar(gorev_id, anahtar);
 CREATE TABLE IF NOT EXISTS hafiza (
     id INTEGER PRIMARY KEY AUTOINCREMENT, metin TEXT NOT NULL, tur TEXT NOT NULL DEFAULT 'tercih',
-    kaynak TEXT NOT NULL, tarih REAL NOT NULL, aktif INTEGER NOT NULL DEFAULT 1, yerine_gecen INTEGER
+    kaynak TEXT NOT NULL, tarih REAL NOT NULL, aktif INTEGER NOT NULL DEFAULT 1, yerine_gecen INTEGER,
+    konu TEXT
 );
 """
 
@@ -48,6 +49,22 @@ def maskele(metin):
     return metin
 
 
+# Common personal facts get a topic automatically so a newer statement replaces the old one.
+_KONULAR = [
+    ('ad', r'\b(ad[ıi]m|ismim|benim ad[ıi]m)\b'),
+    ('dogum_gunu', r'doğum gün|dogum gun'),
+    ('sehir', r'\b(yaşıyorum|oturuyorum|şehrim|memleketim)\b'),
+    ('meslek', r'\b(mesleğim|işim|çalışıyorum)\b'),
+    ('es', r'\b(eşim|karım|kocam|sevgilim)\b'),
+    ('takim', r'\b(tuttuğum takım|takımım|taraftarıyım)\b'),
+]
+
+
+def konu_tahmin(metin: str):
+    k = (metin or '').replace('İ', 'i').replace('I', 'ı').lower()
+    return next((konu for konu, desen in _KONULAR if re.search(desen, k)), None)
+
+
 def anahtar_uret(arac: str, argumanlar: dict) -> str:
     return hashlib.sha256((arac + json.dumps(argumanlar, sort_keys=True, ensure_ascii=False)).encode()).hexdigest()[:24]
 
@@ -59,6 +76,9 @@ class Depo:
         self._db.row_factory = sqlite3.Row
         self._db.execute('PRAGMA journal_mode=WAL')
         self._db.executescript(SEMA)
+        # migration for databases created before memory topics existed
+        if 'konu' not in [r[1] for r in self._db.execute('PRAGMA table_info(hafiza)')]:
+            self._db.execute('ALTER TABLE hafiza ADD COLUMN konu TEXT')
 
     def _calistir(self, sql: str, params=()):
         with self._kilit:
@@ -134,9 +154,16 @@ class Depo:
             "ORDER BY id DESC LIMIT ?", (sinir,))][::-1]
 
     # ------------------------------------------------------------- memory
-    def hafiza_ekle(self, metin: str, kaynak: str, tur: str = 'tercih') -> int:
-        return self._calistir('INSERT INTO hafiza (metin, tur, kaynak, tarih) VALUES (?,?,?,?)',
-                              (maskele(metin), tur, kaynak, time.time())).lastrowid
+    def hafiza_ekle(self, metin: str, kaynak: str, tur: str = 'tercih', konu: str = None) -> int:
+        """Save a fact. With a topic, the newest fact wins: older active facts on the
+        same topic are switched off (kept for history, pointing at the new one)."""
+        konu = konu or konu_tahmin(metin)
+        yeni = self._calistir('INSERT INTO hafiza (metin, tur, kaynak, tarih, konu) VALUES (?,?,?,?,?)',
+                              (maskele(metin), tur, kaynak, time.time(), konu)).lastrowid
+        if konu:
+            self._calistir('UPDATE hafiza SET aktif=0, yerine_gecen=? WHERE konu=? AND aktif=1 AND id<>?',
+                           (yeni, konu, yeni))
+        return yeni
 
     def hafiza(self, sadece_aktif: bool = True) -> list:
         sql = 'SELECT * FROM hafiza' + (' WHERE aktif=1' if sadece_aktif else '') + ' ORDER BY tarih'

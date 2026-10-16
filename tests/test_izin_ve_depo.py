@@ -83,3 +83,30 @@ def test_kabuklar_onayla_bile_calismaz(motor_yap, ev):
     assert m.depo.adimlar(s.gorev_id)[0]['durum'] == 'reddedildi'
     for kabuk in ('cmd', 'pwsh', 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', 'wscript'):
         assert m.izinler.karar(KAYIT['program_calistir'], {'program': kabuk, 'argumanlar': []})[0] == 'red'
+
+
+def test_yeni_bilgi_eskisinin_yerine_gecer(motor_yap, ev):
+    d = motor_yap([]).depo
+    eski = d.hafiza_ekle('Benim adım Ali.', kaynak='kullanıcı')
+    d.hafiza_ekle('Favori renk mavi.', kaynak='kullanıcı', konu='renk')
+    yeni = d.hafiza_ekle('Adım Batuhan, düzeltiyorum.', kaynak='kullanıcı')
+    d.hafiza_ekle('Favori renk yeşil.', kaynak='kullanıcı', konu='renk')
+    aktif = [k['metin'] for k in d.hafiza()]
+    assert aktif == ['Adım Batuhan, düzeltiyorum.', 'Favori renk yeşil.']
+    eskisi = next(k for k in d.hafiza(sadece_aktif=False) if k['id'] == eski)
+    assert eskisi['aktif'] == 0 and eskisi['yerine_gecen'] == yeni     # kept for history
+
+
+def test_eski_veritabani_tasinir(tmp_path):
+    import sqlite3
+    from jarvis_core.depo import Depo
+    yol = tmp_path / 'eski.db'
+    db = sqlite3.connect(yol)
+    db.execute("CREATE TABLE hafiza (id INTEGER PRIMARY KEY AUTOINCREMENT, metin TEXT NOT NULL, tur TEXT NOT NULL "
+               "DEFAULT 'tercih', kaynak TEXT NOT NULL, tarih REAL NOT NULL, aktif INTEGER NOT NULL DEFAULT 1, yerine_gecen INTEGER)")
+    db.execute("INSERT INTO hafiza (metin, kaynak, tarih) VALUES ('eski bilgi', 'x', 1)")
+    db.commit()
+    db.close()
+    d = Depo(yol)
+    d.hafiza_ekle('Adım Can.', kaynak='kullanıcı')
+    assert [k['metin'] for k in d.hafiza()] == ['eski bilgi', 'Adım Can.']

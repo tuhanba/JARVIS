@@ -5,10 +5,12 @@ from .temel import Sonuc, arac, metin
 
 @arac('hafizaya_kaydet', 'Kullanıcının açıkça hatırlanmasını istediği bir bilgiyi kalıcı hafızaya kaydeder.',
       {'bilgi': metin('Kısa, net bir cümle, ör. "Kullanıcının adı Batuhan."'),
-       'tur': {'type': 'string', 'enum': ['tercih', 'kisisel', 'proje'], 'description': 'Bilgi türü'}},
+       'tur': {'type': 'string', 'enum': ['tercih', 'kisisel', 'proje'], 'description': 'Bilgi türü'},
+       'konu': metin('Kısa konu anahtarı, ör. "ad", "is_klasoru", "favori_takim". Aynı konudaki eski bilginin '
+                     'yerine geçer.', pattern='^[a-z0-9_]{1,40}$')},
       ['bilgi', 'tur'], risk=YAZMA, yan_etki=True)
-def hafizaya_kaydet(baglam, bilgi, tur):
-    kayit = baglam.depo.hafiza_ekle(bilgi, kaynak='görev sırasında yapay zeka', tur=tur)
+def hafizaya_kaydet(baglam, bilgi, tur, konu=None):
+    kayit = baglam.depo.hafiza_ekle(bilgi, kaynak='görev sırasında yapay zeka', tur=tur, konu=konu)
     return Sonuc(True, f'Kaydedildi (#{kayit}).', dogrulandi=True)
 
 
@@ -19,8 +21,9 @@ def hafizayi_listele(baglam):
     kayitlar = baglam.depo.hafiza()
     if not kayitlar:
         return Sonuc(True, 'Hafıza boş.')
-    return Sonuc(True, '\n'.join(f"#{k['id']} [{k['tur']}, {time.strftime('%d.%m.%Y', time.localtime(k['tarih']))}, "
-                                 f"{k['kaynak']}] {k['metin']}" for k in kayitlar))
+    return Sonuc(True, '\n'.join(f"#{k['id']} [{k['tur']}{', ' + k['konu'] if k.get('konu') else ''}, "
+                                 f"{time.strftime('%d.%m.%Y', time.localtime(k['tarih']))}, {k['kaynak']}] {k['metin']}"
+                                 for k in kayitlar))
 
 
 @arac('hafizadan_unut', 'Kalıcı hafızadan, verilen metni içeren bilgileri siler.',
