@@ -86,8 +86,9 @@ def _piper_ses():
 _ORTAK = dict(netlik=0.45, hava=0.30, ritim=0.8, tini=0.667)
 KARAKTERLER = {
     # Near-natural, warm and polite, steady and confident; the effect is only a touch.
-    'kibar':    dict(_ORTAK, perde=0.935, hiz=0.87, sicaklik=0.42, parlaklik=0.07, koro=0.00, oda=0.65, sus=0.20,
-                     netlik=0.30, hava=0.12, ritim=0.55, tini=0.58),
+    # Refined gentleman: brisk but unhurried, a little deeper, warm and smooth, almost no metal.
+    'kibar':    dict(_ORTAK, perde=0.92, hiz=0.80, sicaklik=0.45, parlaklik=0.04, koro=0.00, oda=0.55, sus=0.18,
+                     netlik=0.32, hava=0.18, ritim=0.50, tini=0.58),
     'hafif':    dict(_ORTAK, perde=0.95, hiz=0.97, sicaklik=0.25, parlaklik=0.12, koro=0.00, oda=0.8, sus=0.22),
     'jarvis':   dict(_ORTAK, perde=0.91, hiz=0.98, sicaklik=0.35, parlaklik=0.18, koro=0.16, oda=1.0, sus=0.32),
     'belirgin': dict(_ORTAK, perde=0.88, hiz=1.00, sicaklik=0.45, parlaklik=0.28, koro=0.28, oda=1.3, sus=0.38),
