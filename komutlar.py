@@ -12,7 +12,8 @@ YARDIM = (
     'Vikipedi, ses ve parlaklık ayarı, ekran görüntüsü, sistem durumu, not almak ve okumak, '
     'hatırlatıcı kurmak, klasör açmak, dosyaları listelemek, yazı yazmak, kısayol tuşları, '
     'bilgisayarı kilitlemek, kapatmak, yeniden başlatmak ve uyutmak. '
-    'Yapay zeka açıksa aklınıza gelen her şeyi sorabilir ya da bilgisayarda yaptırabilirsiniz.'
+    'Yapay zeka açıksa ayrıca internette arama yapabilir, ekranınıza bakabilir, dosyaları bulup taşıyabilir, '
+    'program yazıp çalıştırabilir ve söylediklerinizi kalıcı olarak hatırlayabilirim; ne isterseniz söyleyin.'
 )
 
 SAKALAR = [
@@ -53,7 +54,7 @@ def isle(metin: str, beyin) -> bool:
         konus('Görüşürüz efendim.')
         return False
 
-    cevap = _yerel_komut(k, metin)
+    cevap = _yerel_komut(k, metin, beyin.aktif)
     if cevap is None:
         cevap = beyin.sor(metin) if beyin.aktif else (
             'Bunu anlamadım efendim. Neler yapabildiğimi öğrenmek için "neler yapabilirsin" deyin.')
@@ -62,8 +63,21 @@ def isle(metin: str, beyin) -> bool:
     return True
 
 
-def _yerel_komut(k: str, ham: str):
+def _yerel_komut(k: str, ham: str, ai_var: bool = False):
     """Return the spoken answer, or None if no fixed command matched."""
+    if ai_var and re.search(r'ekran(a|ı|da|daki)\b.*(bak|gör|ne var|oku|açıkla)|ekranda ne', k):
+        return None  # the AI answers with its ekrani_gor tool
+    # Long-term memory is saved here, not left to the model: small models often
+    # say "I'll remember" without calling the tool.
+    if re.search(r'\b(unutma|aklında tut|aklında olsun|hatırla ki)\b', k) and 'hatırlat' not in k:
+        bilgi = re.sub(r'[,.\s]*\b(bunu |şunu )?(unutma|aklında tut|aklında olsun|hatırla ki)\b[,.!\s]*', ' ',
+                       ham, flags=re.IGNORECASE).strip(' ,.')
+        if bilgi:
+            sistem.hafizaya_kaydet(bilgi)
+            return 'Aklımda tutacağım efendim.'
+    if re.search(r'(benim hakkımda|hakkımda) (ne biliyorsun|neler biliyorsun)', k):
+        hafiza = sistem.hafizayi_yukle()
+        return ('Bildiklerim: ' + '. '.join(hafiza)) if hafiza else 'Henüz sizinle ilgili bir şey kaydetmedim.'
     if 'neler yapabilirsin' in k or k in ('yardım', 'komutlar'):
         return YARDIM
     if 'nasılsın' in k:
@@ -102,8 +116,10 @@ def _yerel_komut(k: str, ham: str):
         return sistem.youtube_cal(sorgu) if sorgu else 'Ne çalayım efendim?'
     if 'youtube' in k and 'ara' in k:
         return sistem.youtube_ara(_temizle(k, "youtube'da", 'youtubeda', 'youtube', 'ara', 'arat'))
-    if re.search(r"\b(google'da|googleda|internette)\b.*\bara", k) or re.search(r'\b(ara|arat)$', k):
-        return sistem.google_ara(_temizle(k, "google'da", 'googleda', 'internette', 'arat', 'ara'))
+    # With an AI the "search the internet" requests get a spoken answer instead of a browser tab.
+    if re.search(r"\b(google'da|googleda)\b.*\bara", k) or (
+            not ai_var and (re.search(r'\binternette(n)?\b.*\bara', k) or re.search(r'\b(ara|arat)$', k))):
+        return sistem.google_ara(_temizle(k, "google'da", 'googleda', 'internetten', 'internette', 'arat', 'ara', ','))
 
     # sound / screen
     if 'ses' in k and any(w in k for w in ('aç', 'artır', 'yükselt', 'kıs', 'azalt', 'düşür', 'kapat', 'sessiz')):
@@ -186,6 +202,8 @@ def _yerel_komut(k: str, ham: str):
         hedef = _ek_at(ac.group(1))
         if re.search(r'\.\w{2,}', hedef) or hedef in sistem.SITELER:
             return sistem.web_sitesi_ac(hedef)
-        return sistem.uygulama_ac(hedef)
+        # Unknown names ("kapıyı aç", "son indirdiğim dosyayı aç") are better left to the AI.
+        if sistem.uygulama_bul(hedef) or not ai_var:
+            return sistem.uygulama_ac(hedef)
 
     return None

@@ -40,8 +40,10 @@ def main() -> None:
         ses.yazi_modunu_ac()
 
     beyin = Beyin()
-    if not beyin.aktif:
-        print('Not: .env dosyasında GEMINI_API_KEY yok; yapay zeka kapalı, yalnız hazır komutlar çalışır.')
+    if beyin.aktif:
+        print(f'Yapay zeka: {beyin.ad}')
+    else:
+        print('Not: Ollama çalışmıyor ve GEMINI_API_KEY yok; yapay zeka kapalı, yalnız hazır komutlar çalışır.')
 
     selamla()
     while True:

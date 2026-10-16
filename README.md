@@ -1,16 +1,21 @@
 # JARVIS — Türkçe sesli asistan
 
-Türkçe dinler, Türkçe konuşur, bilgisayarınızı yönetir. Anlamadığı her şeyi
-ücretsiz **Gemini** yapay zekasına sorar; Gemini de bilgisayarda iş yapabilir
-(dosya, uygulama, PowerShell komutu...). Kamera kullanılmaz.
+Türkçe dinler, Türkçe konuşur, bilgisayarınızı yönetir. Yapay zekası **Ollama** ile
+sizin bilgisayarınızda çalışır: ücretsiz ve sınırsız. İnternette arama yapabilir,
+ekranınızı görebilir, dosyaları bulup taşıyabilir, PowerShell ve Python çalıştırabilir,
+söylediklerinizi kalıcı olarak hatırlar. Ollama yoksa ücretsiz **Gemini**'yi kullanır.
+Kamera kullanılmaz.
 
 ## Kurulum (Windows)
 
 1. [Python 3.12](https://www.python.org/downloads/) kurun ("Add Python to PATH" işaretli).
-2. Bu klasörde **`kur.bat`** dosyasına çift tıklayın.
-3. https://aistudio.google.com/apikey adresinden ücretsiz Gemini anahtarı alın,
-   klasördeki **`.env`** dosyasını Not Defteri ile açıp `GEMINI_API_KEY=` satırının sonuna yapıştırın.
-4. **`baslat.bat`** (sesli) veya **`yazarak_baslat.bat`** (klavyeyle) ile başlatın.
+2. Bu klasörde **`kur.bat`** dosyasına çift tıklayın. Python paketlerini, Ollama'yı ve
+   yapay zeka modelini (birkaç GB) indirir.
+3. **`baslat.bat`** (sesli) veya **`yazarak_baslat.bat`** (klavyeyle) ile başlatın.
+
+Bilgisayarınız zayıfsa (8 GB RAM) `.env` dosyasında `OLLAMA_MODEL=qwen3.5:4b` yapıp
+`kur.bat`'ı tekrar çalıştırın. İsterseniz yedek olarak https://aistudio.google.com/apikey
+adresinden aldığınız Gemini anahtarını `.env` içindeki `GEMINI_API_KEY=` satırına yazın.
 
 ## Örnek komutlar
 
@@ -25,7 +30,8 @@ Türkçe dinler, Türkçe konuşur, bilgisayarınızı yönetir. Anlamadığı h
 | Dosyalar | "masaüstü klasörünü aç", "indirilenler neler var" |
 | Klavye | "şunu yaz Merhaba", "kopyala", "yapıştır", "pencere değiştir" |
 | Bilgisayar | "bilgisayarı kilitle", "bilgisayarı kapat", "yeniden başlat", "uyku modu" |
-| Yapay zeka | "masaüstümdeki pdf dosyalarını bul", "bana bir e-posta taslağı yaz", her türlü soru |
+| Yapay zeka | "masaüstümdeki pdf dosyalarını bul", "dün Fenerbahçe maçı kaç bitti", "ekranda ne var", |
+| | "indirilenlerdeki resimleri Resimler klasörüne taşı", "benim doğum günüm 3 Mayıs, unutma" |
 | Çıkış | "görüşürüz" |
 
 Silme, taşıma, kapatma gibi geri alınamaz işlemlerden önce JARVIS "evet" onayı ister.

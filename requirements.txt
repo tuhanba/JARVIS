@@ -5,15 +5,19 @@ edge-tts>=6.1                # natural Turkish voice (needs internet)
 pygame>=2.5                  # plays the edge-tts audio
 pyttsx3>=2.90                # offline fallback voice (Linux: apt install espeak-ng)
 
-# AI brain (free Gemini API key in .env)
+# AI brain: local Ollama (unlimited) and/or free Gemini API
+ollama>=0.5
 google-genai>=1.0
 python-dotenv>=1.0
+ddgs>=9.0                    # web search tool
 
 # Computer control
 PyAutoGUI>=0.9.53
 pyperclip>=1.8
 psutil>=5.8
 screen-brightness-control>=0.20
+Send2Trash>=1.8              # delete to the Recycle Bin
+PyGetWindow>=0.0.9           # window switching (Windows)
 
 # Web
 requests>=2.26
