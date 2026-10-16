@@ -143,3 +143,19 @@ Test (Linux, Windows değil):
 |---|---|---|---|
 | Ses Türkçe-İngilizce karışık ve net değil | Çevrimiçi ses çalışmadığında İngilizce Windows sesine düşüyordu | Varsayılan ses yerel Piper Türkçe (+ JARVIS efekti); Windows sesi yalnız Türkçe ise kullanılır | Linux'ta sentez + oynatma; kırpılma yok; susturma 0.03 sn. Windows'ta kulakla doğrulanmadı |
 | DURDUR'dan sonra yeni emir tıkanıyor | İptal sonrası Ollama eski cevabı üretmeye devam edebiliyordu; konuşma görevi bloke ediyordu | Ollama akışı kendi soketimizle (iptalde kapatılır); konuşma ayrı kuyrukta; 4 sn bekçi; görev sıra numarası | Canlı: iptal 0.04 sn, sonraki istek 3.4 sn. 3 yeni panel testi. Windows'ta denenmedi |
+
+## 8. Aşama 3 (tarayıcı, indirme, belgeler, hafıza, uygulama içi kontrol)
+
+| Parça | Ne var | Test (Linux) |
+|---|---|---|
+| 3a Belgeler | `belge_oku` (PDF sayfa aralığı, şifreli/taranmış tespiti, Word, Excel, CSV, HTML), `rapor_yaz` (.docx başlık/madde, .md, .html, .txt; geri okuyarak doğrulama, yedek, geri alma) | okuma 4 biçim, rapor yaz/oku, "PDF'leri özetle ve rapor oluştur" senaryosu (sahte model) |
+| 3a İndirme | `dosya_indir` (canlı ilerleme, iptal, boyut sınırı, boş disk kontrolü, üzerine yazmama, yarım dosya temizliği, boyut eşleşmesiyle doğrulama), `dosya_ac` (.exe/.msi/.bat… her seferinde onay) | doğrulama, eksik inen dosya, iptal, çalıştırılabilir onayı, "indir ve aç" senaryosu |
+| 3b Tarayıcı | Playwright + kurulu Edge (`channel=msedge`), görünür pencere, ayrı profil: git/ara, sayfa oku + tıklanabilir öğe listesi, metne/ada göre tıklama ve değişim doğrulama, alan doldurma ve değer doğrulama, sekmeler, tıklayarak indirme | yerel test sitesinde headless Chromium: 4 test |
+| 3b Güvenlik | Parola/kart alanlarına yazmaz; satın al/öde/gönder/sil/yayınla/onayla tıklamaları ve arama dışı form gönderimi `dis_iletisim` (her seferinde onay, kural ile önceden izin verilemez); tıklamadan hemen önce gerçek öğe etiketi yeniden kontrol edilir; harici içerikten sonra sorgu parametreli adrese gitmek onay ister (veri kaçırma) | gizlenmiş sipariş düğmesi, parola alanı, veri kaçırma girişimi |
+| Araç yönlendirme | 42 araç + talimat ≈ 5.4k token idi (8k bağlamda taşma). Temel set + isteğe göre gruplar + `araclari_ac`; tipik istem ≈ 2.4k–3.9k token. Uzayan konuşmada eski araç çıktıları kısaltılır; belge okuma bağlama göre sınırlanır | grup seçimi, meta araç, bağlam kısaltma |
+| Harici içerik kuralı | Okunduktan sonra güvenli klasörde yeni dosya/rapor/klasör oluşturmak serbest (geri alınabilir); üzerine yazma, taşıma, silme, açma, indirme, program, hafıza onay ister | ilgili motor testi |
+| 3c Hafıza | Konu etiketi; aynı konudaki yeni bilgi eskisini devre dışı bırakır (geçmiş için saklanır); ad, doğum günü, şehir vb. otomatik konu; eski veritabanı taşınır | 2 test |
+| 3d Uygulama içi | `pencere_ogeleri`, `ogeye_tikla`, `ogeye_yaz` (UI Automation, ada göre, koordinatsız); fare kullanılırken bekler, kullanıcı bırakmazsa vazgeçer | fare bekleme mantığı, hassas tıklama onayı. **UIA araçları Windows'ta hiç çalıştırılmadı.** |
+
+Toplam: 54 test geçti (Linux). Windows'ta çalıştırılmadı: Edge ile tarayıcı (Playwright `msedge` kanalı),
+UI Automation araçları, dosya açma pencere doğrulaması, fare bekleme.
