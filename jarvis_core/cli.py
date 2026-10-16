@@ -22,6 +22,11 @@ YARDIM = """Komutlar:
 Görev çalışırken "dur" yazın veya Ctrl+C'ye basın."""
 
 
+def _tek_satir(deger, sinir: int) -> str:
+    metin = str(deger).replace('\r', '').replace('\n', ' ⏎ ')
+    return metin if len(metin) <= sinir else metin[:sinir] + '…'
+
+
 class Arayuz:
     def __init__(self) -> None:
         self.cevaplar = queue.Queue()
@@ -44,10 +49,10 @@ class Arayuz:
 
     def _bildir(self, olay: str, veri: dict) -> None:
         if olay == 'arac':
-            argumanlar = ', '.join(f'{k}={str(v)[:60]}' for k, v in veri['argumanlar'].items())
+            argumanlar = ', '.join(f'{k}={_tek_satir(v, 60)}' for k, v in veri['argumanlar'].items())
             print(f'  > {veri["arac"]}({argumanlar})')
         elif olay == 'arac_sonuc':
-            print(f'    {"ok" if veri["basarili"] else "HATA"}: {veri["cikti"][:160]}')
+            print(f'    {"ok" if veri["basarili"] else "HATA"}: {_tek_satir(veri["cikti"], 160)}')
 
     # ------------------------------------------------------------- tasks
     def _gorev_baslat(self, is_) -> None:

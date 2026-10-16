@@ -111,3 +111,28 @@ Bu süreler GPU'suz bir sunucuya aittir; kullanıcının bilgisayarında ölçü
   UI Automation geri okuma, acil durdurma kısayolu, `kur.bat`/`baslat.bat`.
 - Sesli kabul testleri (Aşama 2), indirme / web sitesi / PDF senaryoları (Aşama 3–4).
 - RAM/VRAM ölçümü kullanıcının donanımında yapılmadı; ilk sesli yanıt süresi ölçülmedi.
+
+## 6. Masaüstü paneli
+
+Referans repodaki görsel dil (koyu zemin, camgöbeği "arc reactor" halkaları, ortada J.A.R.V.I.S., kenarlarda
+saat ve CPU/RAM göstergeleri) temel alındı. Referans repo arayüz için tkinter kullanıyor; daha akıcı animasyon
+için panel yerel bir web arayüzü olarak yazıldı ve Edge'in uygulama modunda kendi penceresinde açılıyor
+(`jarvis_core/panel/`). Ek bağımlılık yok.
+
+- Sunucu yalnızca 127.0.0.1'e bağlanır; her istek her açılışta üretilen gizli anahtarı ve panelin kendi
+  kaynağını (Origin) taşımak zorunda. Anahtarsız, yanlış anahtarlı ve başka kaynaktan gelen istekler 403.
+- Olaylar Server-Sent Events ile akar: durum (hazır/dinliyor/düşünüyor/yürütüyor/konuşuyor/onay/hata),
+  araç adımları ve sonuçları, onay istekleri, telemetri (CPU, RAM, GPU, VRAM, sıcaklık, Ollama).
+- Onaylar panelde Evet/Hayır penceresiyle, yazıyla veya sesle ("evet"/"hayır") verilir.
+- Uyandırma sözcüğü modu JARVIS konuşurken dinlemez (kendi sesini komut sanmaz); görev sürerken yalnız
+  "dur/iptal" sözcüklerine tepki verir. DURDUR düğmesi ve Esc konuşmayı da keser.
+- Başlatma: `python kisayol_olustur.py` masaüstüne pythonw ile çalışan bir kısayol koyar (konsol yok,
+  Akıllı Uygulama Denetimi'nin engellediği .bat yok); `--baslangic` Windows açılışına ekler.
+
+Test (Linux, Windows değil):
+- `tests/test_panel.py` (4 test): erişim denetimi, hızlı komut uçtan uca, düğmeyle ve yazıyla onay — geçti.
+- Chromium (Playwright) ile 6 durumda ekran görüntüsü alındı; sayfada JavaScript hatası yok.
+- Canlı: panel API'si → görev motoru → qwen3.5:9b → `dosya_yaz` → dosya diskte, durum `tamamlandi`
+  (GPU'suz sunucuda 329 sn; ilk model yüklemesi dahil).
+- Windows'ta çalıştırılmadı: Edge uygulama penceresi, kısayol/ikon oluşturma, mikrofonla uyandırma sözcüğü,
+  nvidia-smi telemetrisi.

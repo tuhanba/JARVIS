@@ -8,7 +8,7 @@ def test_program_izinleri(motor_yap, ev):
     assert iz.karar(p, {'program': 'git', 'argumanlar': ['status']})[0] == 'izin'
     assert iz.karar(p, {'program': 'git', 'argumanlar': ['push']})[0] == 'sor'
     assert iz.karar(p, {'program': 'python', 'argumanlar': ['-c', 'print(1)']})[0] == 'sor'
-    assert iz.karar(p, {'program': 'powershell', 'argumanlar': ['Remove-Item', 'x']})[0] == 'sor'
+    assert iz.karar(p, {'program': 'powershell', 'argumanlar': ['Remove-Item', 'x']})[0] == 'red'
 
 
 def test_kullanici_kurali_ve_yasak(motor_yap, ev, tmp_path):
@@ -72,3 +72,13 @@ def test_gecersiz_cagri_sonsuz_tur_atamaz(motor_yap, ev):
     m = motor_yap(senaryo, max_adim=5)
     assert m.calistir('yaz').durum == 'butce_asildi'
     assert len(m.llm.gorulen) <= 11
+
+
+def test_kabuklar_onayla_bile_calismaz(motor_yap, ev):
+    m = motor_yap([[('program_calistir', {'program': 'powershell', 'argumanlar': ['-Command', 'Get-History']})],
+                   'Tamam.'], onay=lambda s: True)
+    s = m.calistir('Türkiye tarihini anlat')
+    assert not m.sorular                       # never even offered for approval
+    assert m.depo.adimlar(s.gorev_id)[0]['durum'] == 'reddedildi'
+    for kabuk in ('cmd', 'pwsh', 'C:\\Windows\\System32\\WindowsPowerShell\\v1.0\\powershell.exe', 'wscript'):
+        assert m.izinler.karar(KAYIT['program_calistir'], {'program': kabuk, 'argumanlar': []})[0] == 'red'

@@ -13,10 +13,21 @@ from .ayarlar import Ayarlar
 
 def _komut(argv, zaman=8):
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=zaman, errors='replace')
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=zaman, errors='replace',
+                           creationflags=0x08000000 if sys.platform == 'win32' else 0)
         return p.stdout.strip() if p.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired):
         return None
+
+
+def _duzelt(ad: str) -> str:
+    """PortAudio on Windows hands back UTF-8 names decoded as cp1252 ("EÅŸleÅŸtirici")."""
+    for kodlama in ('cp1252', 'latin-1'):
+        try:
+            return ad.encode(kodlama).decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return ad
 
 
 def gpu_bilgisi() -> list:
@@ -29,6 +40,21 @@ def gpu_bilgisi() -> list:
         if ps:
             return [f'{s.strip()} (VRAM ölçülemedi)' for s in ps.splitlines() if s.strip()]
     return []
+
+
+def deneme_uretimi(istemci, a) -> dict:
+    """Actually run the selected model once: a listed model can still crash on load."""
+    import time
+    model = a.model()
+    t0 = time.time()
+    try:
+        cevap = istemci.generate(model=model, prompt='Sadece "tamam" yaz.', think=False,
+                                 options={'num_ctx': a.baglam, 'num_predict': 5}, keep_alive='5m')
+        return {'basarili': True, 'sure': time.time() - t0, 'metin': (cevap.response or '').strip()[:30]}
+    except Exception as e:
+        from .llm import ollama_hata_aciklamasi
+        return {'basarili': False, 'sure': time.time() - t0,
+                'hata': ollama_hata_aciklamasi(getattr(e, 'error', None) or str(e))}
 
 
 def rapor() -> dict:
@@ -60,11 +86,13 @@ def rapor() -> dict:
             except Exception:
                 yet = []
             r['modeller'].append({'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1), 'yetenekler': yet})
-        r['yuklu'] = [{'ad': m.model, 'vram_gb': round((m.size_vram or 0) / 2**30, 1)} for m in c.ps().models]
+        r['deneme'] = deneme_uretimi(c, a)
+        r['yuklu'] = [{'ad': m.model, 'boyut_gb': round((m.size or 0) / 2**30, 1),
+                       'vram_gb': round((m.size_vram or 0) / 2**30, 1)} for m in c.ps().models]
     r['secili_model'] = a.model()
     try:
         import speech_recognition as sr
-        r['mikrofonlar'] = sr.Microphone.list_microphone_names()
+        r['mikrofonlar'] = [_duzelt(ad) for ad in sr.Microphone.list_microphone_names()]
     except Exception as e:
         r['mikrofonlar'] = f'bilinmiyor ({e.__class__.__name__})'
     try:
@@ -98,8 +126,16 @@ def yazdir(r: dict) -> list:
             sorunlar.append(f"Seçili model yok: ollama pull {r['secili_model']}")
         elif 'tools' not in next(m for m in r['modeller'] if m['ad'] == r['secili_model'])['yetenekler']:
             sorunlar.append(f"{r['secili_model']} araç çağırmayı desteklemiyor.")
+        d = r.get('deneme')
+        if d and d['basarili']:
+            print(f"  Deneme üretimi : çalıştı ({d['sure']:.1f} sn, yükleme dahil)")
+        elif d:
+            print(f"  Deneme üretimi : BAŞARISIZ ({d['sure']:.1f} sn)")
+            sorunlar.append(d['hata'])
         for y in r.get('yuklu', []):
-            print(f"     bellekte: {y['ad']} ({y['vram_gb']} GB ekran kartında)")
+            oran = round(100 * y['vram_gb'] / y['boyut_gb']) if y['boyut_gb'] else 0
+            print(f"     bellekte: {y['ad']} {y['boyut_gb']} GB, Ollama'ya göre %{oran} ekran kartında"
+                  + ('' if oran >= 99 else ' (bir kısmı işlemcide: yavaş; OLLAMA_BAGLAM küçültülebilir)'))
     mik = r['mikrofonlar']
     print(f"  Mikrofon        : {', '.join(mik[:3]) if isinstance(mik, list) and mik else mik or 'YOK'}")
     if not mik or not isinstance(mik, list):
