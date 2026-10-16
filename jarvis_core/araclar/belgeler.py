@@ -112,6 +112,15 @@ def belge_oku(baglam, yol, ilk_sayfa=1, sayfa_sayisi=20):
                  veri={'yol': str(p), 'karakter': len(icerik)})
 
 
+def _paragraf(belge, metin_: str, stil=None):
+    """Paragraph with **bold** spans turned into real bold runs."""
+    par = belge.add_paragraph(style=stil)
+    for i, parca in enumerate(re.split(r'\*\*(.+?)\*\*', metin_)):
+        if parca:
+            par.add_run(parca.replace('**', '')).bold = (i % 2 == 1)
+    return par
+
+
 def _docx_yaz(p: Path, baslik: str, icerik: str) -> None:
     import docx
     belge = docx.Document()
@@ -122,17 +131,19 @@ def _docx_yaz(p: Path, baslik: str, icerik: str) -> None:
         if not s:
             continue
         if s.startswith('### '):
-            belge.add_heading(s[4:], level=3)
+            belge.add_heading(s[4:].replace('**', ''), level=3)
         elif s.startswith('## '):
-            belge.add_heading(s[3:], level=2)
+            belge.add_heading(s[3:].replace('**', ''), level=2)
         elif s.startswith('# '):
-            belge.add_heading(s[2:], level=1)
+            if s[2:].strip() == baslik.strip():
+                continue                 # the title is already on top
+            belge.add_heading(s[2:].replace('**', ''), level=1)
         elif re.match(r'^\s*[-*•] ', s):
-            belge.add_paragraph(re.sub(r'^\s*[-*•] ', '', s), style='List Bullet')
+            _paragraf(belge, re.sub(r'^\s*[-*•] ', '', s), 'List Bullet')
         elif re.match(r'^\s*\d+[.)] ', s):
-            belge.add_paragraph(re.sub(r'^\s*\d+[.)] ', '', s), style='List Number')
+            _paragraf(belge, re.sub(r'^\s*\d+[.)] ', '', s), 'List Number')
         else:
-            belge.add_paragraph(s.replace('**', ''))
+            _paragraf(belge, s)
     belge.save(str(p))
 
 

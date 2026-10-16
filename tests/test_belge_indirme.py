@@ -164,3 +164,14 @@ def test_pdfleri_ozetle_ve_rapor_olustur_senaryosu(motor_yap, ev):
     assert (ev / 'Documents' / 'Havuz' / 'Özet Raporu.docx').exists()
     gorulen = '\n'.join(x['content'] for x in m.llm.gorulen[2] if x['role'] == 'tool')
     assert 'Ekim klor 1.5' in gorulen and 'Kasim klor 1.2' in gorulen and '<harici_veri' in gorulen
+
+
+def test_rapordaki_kalin_isaretleri_gercek_kalin_olur(ev):
+    import docx
+    KAYIT['rapor_yaz'].calistir(_baglam(), yol='Belgeler/k.docx', baslik='Rapor',
+                                icerik='# Rapor\n- **Klor:** 1.5 ppm\nNormal **önemli** metin')
+    belge = docx.Document(str(ev / 'Documents' / 'k.docx'))
+    metinler = [p.text for p in belge.paragraphs]
+    assert '**' not in ''.join(metinler) and metinler.count('Rapor') == 1
+    madde = next(p for p in belge.paragraphs if p.text.startswith('Klor'))
+    assert madde.runs[0].bold and madde.runs[0].text == 'Klor:'
