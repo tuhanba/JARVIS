@@ -19,6 +19,16 @@ def _komut(argv, zaman=8):
         return None
 
 
+def _duzelt(ad: str) -> str:
+    """PortAudio on Windows hands back UTF-8 names decoded as cp1252 ("EÅŸleÅŸtirici")."""
+    for kodlama in ('cp1252', 'latin-1'):
+        try:
+            return ad.encode(kodlama).decode('utf-8')
+        except (UnicodeEncodeError, UnicodeDecodeError):
+            continue
+    return ad
+
+
 def gpu_bilgisi() -> list:
     nv = _komut(['nvidia-smi', '--query-gpu=name,memory.total,memory.used', '--format=csv,noheader'])
     if nv:
@@ -64,7 +74,7 @@ def rapor() -> dict:
     r['secili_model'] = a.model()
     try:
         import speech_recognition as sr
-        r['mikrofonlar'] = sr.Microphone.list_microphone_names()
+        r['mikrofonlar'] = [_duzelt(ad) for ad in sr.Microphone.list_microphone_names()]
     except Exception as e:
         r['mikrofonlar'] = f'bilinmiyor ({e.__class__.__name__})'
     try:
