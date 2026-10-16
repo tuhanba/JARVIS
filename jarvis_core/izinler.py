@@ -4,7 +4,7 @@ returns or a web page says can reach this module."""
 import json
 import re
 import time
-from pathlib import Path
+from pathlib import Path, PureWindowsPath
 
 from . import yollar
 
@@ -19,6 +19,11 @@ VARSAYILAN_PROGRAMLAR = ['git', 'ollama', 'where', 'whoami', 'ipconfig', 'ping',
                          'hostname', 'nvidia-smi']
 TERMINAL = re.compile(r'powershell|komut istemi|command prompt|cmd|terminal|bash|wsl|ubuntu|conemu|'
                       r'windows terminal|git bash|python', re.IGNORECASE)
+# Shells and script hosts turn one argument into arbitrary commands: never allowed,
+# not even with a yes (the model writes the arguments, not the user).
+KABUKLAR = {'powershell', 'pwsh', 'cmd', 'bash', 'sh', 'zsh', 'wsl', 'wscript', 'cscript', 'mshta',
+            'rundll32', 'regsvr32', 'certutil', 'bitsadmin', 'msiexec', 'schtasks', 'reg', 'sc', 'net',
+            'netsh', 'bcdedit', 'diskpart', 'format', 'takeown', 'icacls', 'vssadmin', 'wmic', 'cipher'}
 GIT_DIS_ETKI = {'push', 'reset', 'clean', 'checkout', 'restore', 'rebase', 'rm', 'mv', 'commit', 'merge',
                 'pull', 'clone', 'remote', 'config', 'stash', 'branch', 'tag', 'switch', 'am', 'apply'}
 
@@ -91,7 +96,9 @@ class Izinler:
                 return 'izin', 'güvenli klasör'
             return 'sor', 'güvenli klasörlerin dışına yazma'
         if arac.risk == PROGRAM:
-            program = Path(str(argumanlar.get('program', ''))).stem.lower()
+            program = PureWindowsPath(str(argumanlar.get('program', ''))).stem.lower()  # handles \ and /
+            if program in KABUKLAR:
+                return 'red', f'{program} bir komut kabuğu; JARVIS kabuk komutu çalıştırmaz'
             args = [str(a) for a in argumanlar.get('argumanlar') or []]
             # first non-option argument is the subcommand ("git -C x push" -> push)
             ilk, atla = '', False
