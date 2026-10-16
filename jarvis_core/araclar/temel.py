@@ -107,11 +107,29 @@ class _SurecSahibi:
     def hepsini_sonlandir(self) -> None:
         with self._kilit:
             surecler, isler = list(self.surecler), list(self.isler)
+        # Snapshot every descendant first: once a parent dies its children are orphaned and
+        # can no longer be found through it (a grandchild may also have escaped the job).
+        torunlar = []
+        try:
+            import psutil
+            for p in surecler:
+                try:
+                    torunlar += psutil.Process(p.pid).children(recursive=True)
+                except psutil.Error:
+                    pass
+        except ImportError:
+            psutil = None
         for is_ in isler:
             _windows_is_kapat(is_)
         for p in surecler:
-            if p.poll() is None or sys.platform != 'win32':
-                _agaci_oldur(p)
+            _agaci_oldur(p)
+        for t in torunlar:
+            try:
+                t.kill()
+            except Exception:
+                pass
+        if psutil is not None and torunlar:
+            psutil.wait_procs(torunlar, timeout=3)
 
 
 def _agaci_oldur(p: subprocess.Popen) -> None:

@@ -264,10 +264,18 @@ def test_iptal_sahip_olunan_surec_agacini_kapatir(motor_yap, ev, tmp_path):
     m.iptal_et()
     t.join(5)
     del KAYIT['agac_test']
-    time.sleep(0.3)
     assert sonuc['s'].durum == 'iptal'
+
+    def olu(pid):
+        try:
+            return not psutil.pid_exists(pid) or psutil.Process(pid).status() == psutil.STATUS_ZOMBIE
+        except psutil.NoSuchProcess:
+            return True
+    bitis = time.time() + 3                      # process exit is asynchronous on Windows
+    while not (olu(ebeveyn) and olu(torun)) and time.time() < bitis:
+        time.sleep(0.05)
     for pid in (ebeveyn, torun):
-        assert not psutil.pid_exists(pid) or psutil.Process(pid).status() == psutil.STATUS_ZOMBIE, pid
+        assert olu(pid), pid
 
 
 class _SayacliIptal:
