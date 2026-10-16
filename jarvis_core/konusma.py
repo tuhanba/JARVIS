@@ -87,8 +87,8 @@ _ORTAK = dict(netlik=0.45, hava=0.30, ritim=0.8, tini=0.667)
 KARAKTERLER = {
     # Near-natural, warm and polite, steady and confident; the effect is only a touch.
     # Refined gentleman: brisk but unhurried, a little deeper, warm and smooth, almost no metal.
-    'kibar':    dict(_ORTAK, perde=0.92, hiz=0.70, sicaklik=0.45, parlaklik=0.04, koro=0.00, oda=0.55, sus=0.14,
-                     netlik=0.32, hava=0.18, ritim=0.50, tini=0.58),
+    'kibar':    dict(_ORTAK, perde=0.97, hiz=0.74, sicaklik=0.22, parlaklik=0.04, koro=0.00, oda=0.55, sus=0.14,
+                     netlik=0.38, hava=0.24, ritim=0.50, tini=0.58),
     'hafif':    dict(_ORTAK, perde=0.95, hiz=0.97, sicaklik=0.25, parlaklik=0.12, koro=0.00, oda=0.8, sus=0.22),
     'jarvis':   dict(_ORTAK, perde=0.91, hiz=0.98, sicaklik=0.35, parlaklik=0.18, koro=0.16, oda=1.0, sus=0.32),
     'belirgin': dict(_ORTAK, perde=0.88, hiz=1.00, sicaklik=0.45, parlaklik=0.28, koro=0.28, oda=1.3, sus=0.38),
