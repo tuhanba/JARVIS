@@ -6,7 +6,7 @@ Engines, in order of preference (JARVIS_TTS in .env):
 Windows' built-in SAPI voices are only used if a Turkish one is installed:
 an English voice reading Turkish text is worse than silence.
 
-The "JARVIS" character (JARVIS_SES_KARAKTER=hafif|jarvis|belirgin) is signal
+The "JARVIS" character (JARVIS_SES_KARAKTER=kibar|hafif|jarvis|belirgin) is signal
 processing on our own output - deeper, more measured, presence lift, a subtle
 digital double, a faint metallic sheen, a short room and pauses between
 sentences. It is not an imitation of any real person's voice.
@@ -81,15 +81,21 @@ def _piper_ses():
 
 # Voice character presets. Final speaking time = hiz / perde (both < 1 lower the
 # pitch or speed things up), so "jarvis" ends up ~8% slower and ~9% deeper.
+# netlik/hava: presence (3 kHz) and air (7.5 kHz) lift. ritim: Piper's rhythm/intonation
+# randomness - lower is steadier and more self-assured.
+_ORTAK = dict(netlik=0.45, hava=0.30, ritim=0.8, tini=0.667)
 KARAKTERLER = {
-    'hafif':    dict(perde=0.95, hiz=0.97, sicaklik=0.25, parlaklik=0.12, koro=0.00, oda=0.8, sus=0.22),
-    'jarvis':   dict(perde=0.91, hiz=0.98, sicaklik=0.35, parlaklik=0.18, koro=0.16, oda=1.0, sus=0.32),
-    'belirgin': dict(perde=0.88, hiz=1.00, sicaklik=0.45, parlaklik=0.28, koro=0.28, oda=1.3, sus=0.38),
+    # Near-natural, warm and polite, steady and confident; the effect is only a touch.
+    'kibar':    dict(_ORTAK, perde=0.935, hiz=0.95, sicaklik=0.42, parlaklik=0.07, koro=0.00, oda=0.65, sus=0.26,
+                     netlik=0.30, hava=0.12, ritim=0.55, tini=0.58),
+    'hafif':    dict(_ORTAK, perde=0.95, hiz=0.97, sicaklik=0.25, parlaklik=0.12, koro=0.00, oda=0.8, sus=0.22),
+    'jarvis':   dict(_ORTAK, perde=0.91, hiz=0.98, sicaklik=0.35, parlaklik=0.18, koro=0.16, oda=1.0, sus=0.32),
+    'belirgin': dict(_ORTAK, perde=0.88, hiz=1.00, sicaklik=0.45, parlaklik=0.28, koro=0.28, oda=1.3, sus=0.38),
 }
 
 
 def karakter() -> dict:
-    k = dict(KARAKTERLER.get(os.getenv('JARVIS_SES_KARAKTER', 'jarvis'), KARAKTERLER['jarvis']))
+    k = dict(KARAKTERLER.get(os.getenv('JARVIS_SES_KARAKTER', 'kibar'), KARAKTERLER['kibar']))
     # individual .env overrides still win
     for anahtar, ortam in (('perde', 'JARVIS_SES_PERDE'), ('hiz', 'JARVIS_SES_HIZ')):
         if os.getenv(ortam):
@@ -97,11 +103,12 @@ def karakter() -> dict:
     return k
 
 
-def piper_sentezle(metin: str, hiz: float = 0.98):
+def piper_sentezle(metin: str, hiz: float = 1.0, ritim: float = 0.8, tini: float = 0.667):
     """Returns (samples float32 -1..1, sample_rate)."""
     from piper import SynthesisConfig
     ses = _piper_ses()
-    parcalar = [p.audio_float_array for p in ses.synthesize(metin, syn_config=SynthesisConfig(length_scale=hiz))]
+    ayar = SynthesisConfig(length_scale=hiz, noise_w_scale=ritim, noise_scale=tini)
+    parcalar = [p.audio_float_array for p in ses.synthesize(metin, syn_config=ayar)]
     if not parcalar:
         return np.zeros(0, dtype=np.float32), ses.config.sample_rate
     return np.concatenate(parcalar).astype(np.float32), ses.config.sample_rate
@@ -133,8 +140,8 @@ def jarvis_efekti(x: np.ndarray, sr: int, k: dict = None) -> np.ndarray:
     kazanc = 1 / np.sqrt(1 + (75 / np.maximum(f, 1)) ** 4)
     kazanc *= 1 + k['sicaklik'] * np.exp(-((f - 160) / 80) ** 2)
     kazanc *= 1 - 0.20 * np.exp(-((f - 480) / 180) ** 2)
-    kazanc *= 1 + 0.45 * np.exp(-((f - 3000) / 1100) ** 2)
-    kazanc *= 1 + 0.30 * np.exp(-((f - 7500) / 2300) ** 2)
+    kazanc *= 1 + k['netlik'] * np.exp(-((f - 3000) / 1100) ** 2)
+    kazanc *= 1 + k['hava'] * np.exp(-((f - 7500) / 2300) ** 2)
     x = np.fft.irfft(X * kazanc, n=len(x)).astype(np.float32)
 
     # 3) Digital layer: a slightly detuned, delayed double (subtle chorus) ...
@@ -172,7 +179,7 @@ def sentezle_dosyaya(metin: str) -> str:
     """Synthesize with Piper (+ effect) into a temp WAV and return its path."""
     k = karakter()
     efekt = os.getenv('JARVIS_SES_EFEKT', '1') == '1'
-    x, sr = piper_sentezle(metin, k['hiz'] if efekt else 1.0)
+    x, sr = piper_sentezle(metin, k['hiz'], k['ritim'], k['tini']) if efekt else piper_sentezle(metin)
     if efekt:
         x = jarvis_efekti(x, sr, k)
     fd, yol = tempfile.mkstemp(suffix='.wav')
