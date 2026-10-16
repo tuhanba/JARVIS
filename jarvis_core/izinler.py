@@ -146,6 +146,14 @@ class Izinler:
             return True
         return False
 
+    def ag_izni_ekle(self, host: str) -> None:
+        """Allow web tools to read a local-network host (router, NAS, a dev server)."""
+        self._yukle()
+        self.veri.setdefault('izinli_aglar', [])
+        if host not in self.veri['izinli_aglar']:
+            self.veri['izinli_aglar'].append(host)
+            self._kaydet()
+
     def program_ekle(self, program: str) -> None:
         self._yukle()
         if program not in self.veri['programlar']:

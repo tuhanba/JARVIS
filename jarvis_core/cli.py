@@ -18,6 +18,7 @@ YARDIM = """Komutlar:
   /izinler               kuralları göster      /izin-ver <araç|*> [klasör]
   /izin-yasakla <araç|*> [klasör]              /izin-sil <no>
   /program-ekle <ad>     programı izinli yap   /hafiza            kalıcı hafıza
+  /ag-izin <host>        yerel ağ adresini web araçlarına aç
   /hatirla <bilgi>       hafızaya ekle         /unut <parça>      hafızadan sil
   /saglik                sistem raporu         /olcumler          model hız ölçümleri
   /cikis
@@ -120,6 +121,9 @@ class Arayuz:
         elif k == '/program-ekle' and len(parca) > 1:
             izin.program_ekle(parca[1])
             print(f'  {parca[1]} izinli programlara eklendi.')
+        elif k == '/ag-izin' and len(parca) > 1:
+            izin.ag_izni_ekle(parca[1])
+            print(f'  {parca[1]} web araçlarına açıldı.')
         elif k == '/hafiza':
             for h in depo.hafiza():
                 print(f"  #{h['id']} [{time.strftime('%d.%m.%Y', time.localtime(h['tarih']))}, {h['kaynak']}] {h['metin']}")

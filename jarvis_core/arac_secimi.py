@@ -14,7 +14,7 @@ from .niyet import kucuk
 GRUPLAR = {
     'dosya': (r'dosya|klasör|belge|masaüst|indir|resim|müzik|video|taşı|kopyala|sil|adlandır|adını değiştir|kaydet|'
               r'pdf|docx|xlsx|txt|csv|uzantı|çöp|geri dönüşüm|oluştur|listele|neler var|yedek|fatura|rapor',
-              ['dosya_ara', 'klasor_listele', 'dosya_oku', 'dosya_yaz', 'klasor_olustur', 'dosya_kopyala',
+              ['dosya_ara', 'klasor_listele', 'dosya_oku', 'belge_oku', 'dosya_yaz', 'klasor_olustur', 'dosya_kopyala',
                'dosya_tasi', 'yeniden_adlandir', 'cop_kutusuna_gonder', 'son_islemi_geri_al']),
     'uygulama': (r'\baç\b|\baçar|kapat|uygulama|pencere|program|chrome|edge|firefox|word|excel|powerpoint|not defter|'
                  r'hesap makine|spotify|discord|steam|whatsapp|telegram|vs ?code|pano|yapıştır|yaz\b|yazar mısın',

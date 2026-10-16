@@ -4,11 +4,12 @@ Durumlar: `planned` · `implemented` (kod var, otomatik test yok) · `unit-teste
 (gerçek araçlar + sahte model, ya da gerçek tarayıcı) · `windows-verified` (kullanıcının Windows
 bilgisayarında denendi) · `blocked` (dış bağımlılık/donanım eksik).
 
-Bir modülün bulunması özelliğin çalıştığını kanıtlamaz. Bu ortam Linux konteyneridir: **hiçbir satır
-`windows-verified` değildir**; Windows'a özgü kod (Job Object, UI Automation, SAPI, known folders)
-burada çalıştırılamadı.
+Bir modülün bulunması özelliğin çalıştığını kanıtlamaz. Geliştirme ortamı Linux konteyneridir. GitHub
+Actions `windows-latest` üzerinde başsız test paketi koşuyor: bu **Windows uyumluluk** kanıtıdır, kullanıcının
+masaüstünde doğrulama değildir; bu yüzden hiçbir satır `windows-verified` değildir. `ci-windows` notu, ilgili
+testin hosted Windows runner'da geçtiğini gösterir.
 
-Son güncelleme: Aşama A sonu (bkz. `IMPLEMENTATION_STATUS.md`).
+Son güncelleme: Aşama A + B + C (kısmi) + J (hatırlatıcı) (bkz. `IMPLEMENTATION_STATUS.md`).
 
 ## Çekirdek (Aşama A)
 
@@ -28,7 +29,7 @@ Son güncelleme: Aşama A sonu (bkz. `IMPLEMENTATION_STATUS.md`).
 | Hızlı komutlar ortak yürütücüden geçer (F06, T06) | integration-tested | `test_hizli_komut_ortak_yurutucuden_gecer`, `test_hizli_komut_politikaya_tabidir`, panel `test_hizli_komut_gorev_kaydi_olusturur` |
 | Görev başına iptal jetonu; yeni görev eski iptali silmez (F07) | integration-tested | `test_yeni_gorev_eski_gorevin_iptalini_silmez` |
 | Sahip olunan süreç ağacını sonlandırma — POSIX süreç grubu (T07) | integration-tested | `test_iptal_sahip_olunan_surec_agacini_kapatir` (Linux) |
-| Sahip olunan süreç ağacını sonlandırma — Windows Job Object | implemented | `temel._windows_is_nesnesi`; Windows'ta çalıştırılmadı |
+| Sahip olunan süreç ağacını sonlandırma — Windows Job Object | integration-tested (ci-windows) | `test_iptal_sahip_olunan_surec_agacini_kapatir` GitHub Actions windows-latest'te geçti |
 | İptal edilebilir parça parça kopyalama, yarım dosya kalmaz (T08) | integration-tested | `test_kopyalama_iptalinde_yarim_dosya_kalmaz` |
 | Durmayan araç için "sonucu belirsiz" (unknown_effect), "durdu" denmez | implemented | `Yurutucu._zamanli_calistir`; özel test yok |
 | Monotonic görev/araç süresi, toplu çağrıda her çağrı öncesi bütçe | integration-tested | `test_adim_butcesi`, `test_zaman_asimi` |
@@ -59,34 +60,52 @@ Son güncelleme: Aşama A sonu (bkz. `IMPLEMENTATION_STATUS.md`).
 
 ## Ollama ve zekâ (Aşama B)
 
-| Yetenek | Durum | Not |
+| Yetenek | Durum | Kanıt / not |
 |---|---|---|
-| Ollama tek sağlayıcı, bulut yedeği yok | integration-tested | `test_ollama_kapali_anlasilir_hata`; canlı testler Ollama yoksa atlanır |
-| `/api/show` ile yetenek kontrolü (tools) | implemented | `llm.hazirla` |
-| Fast-path (modelsiz) basit komutlar | integration-tested | panel testleri |
-| Kod/görsel/genel model profili çağrı yoluna bağlı (F10) | planned | `OLLAMA_MODEL_KOD` henüz kullanılmıyor |
-| İlgili araç seçimi (az şema) | planned | Her istekte modele açık tüm araçlar gidiyor |
-| Gerçek token akışı panele/TTS'e (F11) | planned | |
-| Konuşma referans belleği ("onu taşı") | planned | Son işlemler prompt'ta; yapılandırılmış referans yok |
-| Ölçümler (TTFT, token hızı, araç süresi) | planned | |
+| Ollama tek sağlayıcı, bulut yedeği yok | integration-tested | `test_ollama_kapali_anlasilir_hata`; canlı testler gerçek Ollama 0.40.5 ile koşuldu (CPU) |
+| `/api/show` ile yetenek, nicemleme, bağlam uzunluğu | implemented | `llm.hazirla`, `saglik.model_ayrintisi` |
+| İlgili araç seçimi + `arac_katalogu` ile kontrollü genişleme | integration-tested | `tests/test_asama_b.py` seçim testleri; canlı karşılaştırma `IMPLEMENTATION_STATUS.md` |
+| Kod profili (`OLLAMA_MODEL_KOD`) çağrı yoluna bağlı | integration-tested | `test_kod_profili_cagri_yoluna_bagli` |
+| Gerçek token akışı panele (düşünme gizli) | integration-tested | `test_metin_akisi_bildirilir`, `test_dusunce_etiketleri_akista_gizlenir`; panelde gözle doğrulama yok |
+| `think=False`'u dinlemeyen modellerde düşünmenin cevaba sızmaması | integration-tested + canlı | qwen3:4b canlı yoklamada sızma görüldü; `test_think_false_dinlemeyen_model_ayri_alanda_dusunur` |
+| Tek model bellekte (süreç geneli) | unit-tested | `test_tek_model_kurali_surec_genelinde` |
+| Ölçümler: ilk parça, yükleme, prompt/üretim hızı, sıcak/soğuk | integration-tested | `test_olcumler_kaydedilir`; `/olcumler` |
+| Bağlam bütçesi (eski çıktı kısaltma, amaç notu) | integration-tested | `test_baglam_butcesi_eski_ciktilari_kisaltir_kaydi_bozmaz` |
+| Referans belleği ("onu taşı") | integration-tested | `test_referanslar_promptta`; canlı `takip` görevi 1.7B ile kaldı |
+| Konuşup iş yapmayan modelde sahte başarı yok | integration-tested + canlı | qwen3:1.7b canlı testinde bulundu; `test_arac_cagirmadan_yaptim_demek_basari_sayilmaz` |
+| Çok amaçlı cümlede fast-path yerine model | unit-tested | `test_cok_amacli_cumle_modele_gider` |
+| Türkçe görev değerlendirmesi (bağımsız son durum, sahte başarı sayacı) | integration-tested | `python -m jarvis_core.degerlendirme`; sonuçlar `IMPLEMENTATION_STATUS.md` |
+| Plan/replan (çok adımlı görevlerde açık plan) | planned | Şu an model adım adım ilerliyor; sınırlı düzeltme turu var |
+| Konuşma özetleme | planned | Bağlam bütçesi kısaltma yapıyor, özet üretmiyor |
 
 ## Ses (Aşama C)
 
-| Yetenek | Durum | Not |
+| Yetenek | Durum | Kanıt / not |
 |---|---|---|
-| Çevrimiçi STT (Google) + Edge TTS + pyttsx3 yedek | implemented | Önceki sürümden; README'de çevrimiçi olduğu açıkça yazıyor (F08) |
-| Yerel STT (faster-whisper), yerel TTS, VAD, wake word, barge-in (F09) | planned | Donanım/mikrofon gerektirir; Windows doğrulaması gerekli |
-| Ses paketleri tembel import (headless çalışır) | unit-tested | `ses.py`; testler `speech_recognition` olmadan da ses modülünü yükler |
+| Yerel varsayılan, çevrimiçi yalnız `JARVIS_SES_CEVRIMICI=1` (F08) | unit-tested | `test_cevrimici_ses_yalniz_acik_izinle` |
+| Yerel STT faster-whisper (çok dilli, `tr`, `.en` reddi) | integration-tested | Piper→whisper çevrimdışı tur (`test_cevrimdisi_tts_stt_turu`, modeller varken) |
+| Yerel Türkçe TTS (Piper tr_TR-dfki-medium) | integration-tested | Sentez + tanıma turu; hoparlörden dinlenmedi |
+| İngilizce sesi Türkçe diye sunmama | unit-tested | `test_turkce_olmayan_ses_turkce_diye_sunulmaz` |
+| Türkçe seslendirme metni (sayı, saat, %, birim, yol, URL) | unit-tested | `test_seslendirme_metni`, `test_sayi_oku` |
+| VAD + konuşma sonu, ön kayıt, sınırlı tampon | unit-tested | sentetik ses testleri; gerçek mikrofon yok |
+| Ses durumu panelde ve sağlık raporunda | implemented | `ses_durumu` olayı; tarayıcıda gözle bakılmadı |
+| Gerçek mikrofonla Türkçe tanıma doğruluğu | blocked | Mikrofon yok; sentetik seste "Chrome'u aç" yanlış tanındı |
+| Wake word (yerel), barge-in, yankı, cihaz değişimi (F09, T14–T16) | planned / blocked | Donanım gerekiyor; mevcut uyandırma hâlâ STT sonrası regex |
+| Tek mikrofon akışı (sürekli capture) | planned | `ses.dinle` hâlâ istek başına mikrofon açıyor |
 
 ## Diğer aşamalar
 
 | Alan | Durum | Not |
 |---|---|---|
-| Kalıcı zamanlayıcı / hatırlatıcı (F14, Aşama J) | planned | `hatirlatici_kur` hâlâ `threading.Timer` (süreç kapanınca kaybolur); yürütücüye bağlı |
+| Kalıcı hatırlatıcı: UTC kayıt, yerel gösterim, kaçırılan politika, çift teslim yok, tekrar (F14, T34) | integration-tested | `tests/test_asama_c.py` hatırlatma testleri |
+| Rutinler, dosya/uygulama tetikleyicileri, proaktif mod (Aşama J geri kalanı) | planned | |
 | Ekran: UIA + OCR + vision döngüsü (Aşama D) | planned | `ekrani_gor`, pencere araçları mevcut (önceki sürüm) |
-| Playwright tarayıcı servisi, indirme yöneticisi (Aşama E, F15) | planned | |
-| Belge okuma PDF/DOCX/XLSX, artifact registry (Aşama F, F16) | planned | |
-| Kaynaklı hafıza, supersede, FTS (Aşama G, F16) | planned | Hafıza kayıtları kaynak + tarih taşıyor (önceki sürüm) |
+| Güvenli web okuma: bayt sınırı, içerik türü, yönlendirme başına denetim, yerel ağ izni (T27) | integration-tested | `tests/test_ag.py` (sonsuz yanıt, 169.254.169.254'e yönlendirme, ikili içerik) |
+| Playwright tarayıcı servisi (sekme, DOM, form), indirme yöneticisi (Aşama E, F15) | planned | |
+| Belge okuma PDF/DOCX/XLSX/CSV, konum + sha256, boyut/satır/çıktı sınırı, bozuk belge (Aşama F) | integration-tested | `tests/test_belgeler.py`; taranmış PDF "OCR gerekli" der |
+| OCR, belge üretimi (XLSX/DOCX/PDF rapor), artifact registry | planned | |
+| Hafıza: konu bazlı sürüm (supersede), FTS5 ile ilgili kayıt, unutma indeksten de silinir, harici içerikten gelen iddia "doğrulanmamış" (T28) | integration-tested | `tests/test_hafiza.py` |
+| Hafıza ekranı, embedding ile hibrit arama, proje/oturum katmanları | planned | |
 | Kod/site üretimi, sandbox (Aşama H) | planned | |
 | Beceriler, MCP, entegrasyonlar (Aşama I) | planned | |
 | Kurulum sihirbazı, pyproject, CI, paketleme (Aşama L, F21) | planned | README eski upstream metni temizlendi, `THIRD_PARTY_NOTICES.md` eklendi |

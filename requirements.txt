@@ -35,3 +35,6 @@ keyboard>=0.13.5; sys_platform == "win32"   # global emergency-stop hotkey
 
 # Tests
 pytest>=8.0
+pypdf>=4.0                   # PDF text
+python-docx>=1.1
+openpyxl>=3.1

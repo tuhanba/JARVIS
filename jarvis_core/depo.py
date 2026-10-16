@@ -9,6 +9,7 @@ Schema versions (PRAGMA user_version):
   2  task checkpoint / input source / owner, step action ids and goal keys,
      quarantine for records that can no longer be parsed.
   3  per-turn model measurements (olcumler).
+  4  memory: topic key (konu) for versioning, truth state (dogruluk), FTS index.
 The file is copied to jarvis.db.v<N>.yedek before a migration runs.
 
 Connection ownership: one connection per Depo, shared across threads behind
@@ -25,7 +26,7 @@ from pathlib import Path
 
 from .gizlilik import maskele, maskele_nesne  # noqa: F401  (maskele re-exported for old imports)
 
-SURUM = 3
+SURUM = 4
 
 SEMA_V1 = """
 CREATE TABLE IF NOT EXISTS gorevler (
@@ -47,6 +48,7 @@ CREATE TABLE IF NOT EXISTS hafiza (
 """
 
 GOREV_V2 = [('kontrol_noktasi', "TEXT DEFAULT '{}'"), ('kaynak', "TEXT DEFAULT 'model'"), ('sahip', 'TEXT')]
+HAFIZA_V4 = [('konu', 'TEXT'), ('dogruluk', "TEXT DEFAULT 'kullanici'")]
 ADIM_V2 = [('eylem_id', 'TEXT'), ('amac', 'TEXT'), ('deneme', 'INTEGER DEFAULT 1'), ('hata_turu', 'TEXT'),
            ('veri', 'TEXT'), ('sonuc_durumu', 'TEXT')]
 OLCUMLER = """CREATE TABLE IF NOT EXISTS olcumler (
@@ -97,7 +99,14 @@ class Depo:
         self._db.row_factory = sqlite3.Row
         self._db.execute('PRAGMA journal_mode=WAL')
         self._db.execute('PRAGMA busy_timeout=5000')
+        self.fts = False
         self._gocur(onceden_vardi)
+        if not self.fts:
+            try:
+                self._db.execute('SELECT 1 FROM hafiza_fts LIMIT 1')
+                self.fts = True
+            except sqlite3.OperationalError:
+                pass
 
     # ------------------------------------------------------------- migrations
     def _gocur(self, onceden_vardi: bool) -> None:
@@ -109,13 +118,20 @@ class Depo:
             self._db.execute('PRAGMA wal_checkpoint(FULL)')
             shutil.copy2(self.yol, self.yol.with_name(f'{self.yol.name}.v{max(surum, 1)}.yedek'))
         self._db.executescript(SEMA_V1)
-        for tablo, kolonlar in (('gorevler', GOREV_V2), ('adimlar', ADIM_V2)):
+        for tablo, kolonlar in (('gorevler', GOREV_V2), ('adimlar', ADIM_V2), ('hafiza', HAFIZA_V4)):
             mevcut = {r[1] for r in self._db.execute(f'PRAGMA table_info({tablo})')}
             for ad, tur in kolonlar:
                 if ad not in mevcut:
                     self._db.execute(f'ALTER TABLE {tablo} ADD COLUMN {ad} {tur}')
         self._db.execute(KARANTINA)
         self._db.execute(OLCUMLER)
+        try:
+            self._db.execute("CREATE VIRTUAL TABLE IF NOT EXISTS hafiza_fts USING fts5(metin, content='hafiza', "
+                             "content_rowid='id', tokenize='unicode61 remove_diacritics 2')")
+            self._db.execute("INSERT INTO hafiza_fts(hafiza_fts) VALUES('rebuild')")
+            self.fts = True
+        except sqlite3.OperationalError:
+            self.fts = False
         self._db.execute('CREATE INDEX IF NOT EXISTS adim_eylem ON adimlar(gorev_id, amac)')
         self._karantinaya_al()
         self._db.execute(f'PRAGMA user_version={SURUM}')
@@ -251,14 +267,56 @@ class Depo:
             'FROM (SELECT * FROM olcumler ORDER BY id DESC LIMIT ?) GROUP BY model, soguk', (sinir,))]
 
     # ------------------------------------------------------------- memory
-    def hafiza_ekle(self, metin: str, kaynak: str, tur: str = 'tercih') -> int:
-        return self._calistir('INSERT INTO hafiza (metin, tur, kaynak, tarih) VALUES (?,?,?,?)',
-                              (maskele(metin), tur, kaynak, time.time())).lastrowid
+    # Layers: tur = tercih | kisisel | proje | deneyim. A record with the same `konu` (topic key,
+    # e.g. "kullanıcının adı") supersedes the older one, which stays in history but is no longer
+    # active. dogruluk: 'kullanici' (the user said it) or 'dogrulanmadi' (came from web/file
+    # content) -- untrusted claims are never stored as user facts.
+    def hafiza_ekle(self, metin: str, kaynak: str, tur: str = 'tercih', konu: str = None,
+                    dogruluk: str = 'kullanici') -> int:
+        metin = maskele(metin)
+        with self._kilit:
+            kimlik = self._db.execute('INSERT INTO hafiza (metin, tur, kaynak, tarih, konu, dogruluk) '
+                                      'VALUES (?,?,?,?,?,?)',
+                                      (metin, tur, kaynak, time.time(), (konu or '').strip().lower() or None,
+                                       dogruluk)).lastrowid
+            if konu:
+                self._db.execute('UPDATE hafiza SET aktif=0, yerine_gecen=? WHERE aktif=1 AND konu=? AND id<>?',
+                                 (kimlik, konu.strip().lower(), kimlik))
+            if self.fts:
+                self._db.execute('INSERT INTO hafiza_fts(rowid, metin) VALUES (?,?)', (kimlik, metin))
+        return kimlik
 
     def hafiza(self, sadece_aktif: bool = True) -> list:
         sql = 'SELECT * FROM hafiza' + (' WHERE aktif=1' if sadece_aktif else '') + ' ORDER BY tarih'
         return [dict(r) for r in self._calistir(sql)]
 
+    def hafiza_ara(self, sorgu: str, sinir: int = 8) -> list:
+        """Active records relevant to `sorgu` (FTS5 bm25), best first."""
+        kelimeler = [k for k in __import__('re').findall(r'\w{3,}', (sorgu or '').lower())][:12]
+        if not kelimeler:
+            return []
+        if self.fts:
+            ifade = ' OR '.join(f'"{k}"*' for k in kelimeler)
+            try:
+                return [dict(r) for r in self._calistir(
+                    'SELECT h.* FROM hafiza_fts f JOIN hafiza h ON h.id=f.rowid WHERE hafiza_fts MATCH ? '
+                    'AND h.aktif=1 ORDER BY bm25(hafiza_fts) LIMIT ?', (ifade, sinir))]
+            except sqlite3.OperationalError:
+                pass
+        kosul = ' OR '.join('lower(metin) LIKE ?' for _ in kelimeler)
+        return [dict(r) for r in self._calistir(f'SELECT * FROM hafiza WHERE aktif=1 AND ({kosul}) LIMIT ?',
+                                                 (*[f'%{k}%' for k in kelimeler], sinir))]
+
     def hafiza_unut(self, parca: str) -> int:
-        return self._calistir('UPDATE hafiza SET aktif=0 WHERE aktif=1 AND lower(metin) LIKE ?',
-                              (f'%{parca.lower()}%',)).rowcount
+        """Forget: inactive in prompts and search; the text is removed from the search index.
+        (Older database backups made before this may still contain it.)"""
+        with self._kilit:
+            ids = [r[0] for r in self._db.execute('SELECT id FROM hafiza WHERE aktif=1 AND lower(metin) LIKE ?',
+                                                  (f'%{parca.lower()}%',))]
+            for i in ids:
+                if self.fts:
+                    eski = self._db.execute('SELECT metin FROM hafiza WHERE id=?', (i,)).fetchone()[0]
+                    self._db.execute("INSERT INTO hafiza_fts(hafiza_fts, rowid, metin) VALUES('delete', ?, ?)",
+                                     (i, eski))
+                self._db.execute("UPDATE hafiza SET aktif=0, metin='[unutuldu]' WHERE id=?", (i,))
+        return len(ids)

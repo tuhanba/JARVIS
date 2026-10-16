@@ -91,6 +91,7 @@ class Yurutucu:
         self.depo, self.izinler, self.a = depo, izinler, ayarlar
         self.onay = onay          # onay(soru) -> bool, for this exact action only
         self.bildir = bildir
+        self._kirli = False
 
     # ------------------------------------------------------------- goals
     @staticmethod
@@ -181,6 +182,7 @@ class Yurutucu:
         deneme = gd.amaclar.get(anahtar, {}).get('deneme', 0) + 1
         adim_id = self.depo.adim_baslat(gd.gid, gd.adim, ad, argumanlar, eylem_id=eylem_id, amac=anahtar,
                                         deneme=deneme)
+        self._kirli = gd.kirli
         sonuc = self._zamanli_calistir(arac, argumanlar, jeton, kaynak, son_tarih)
         adim_durumu = {IPTAL_EDILDI: 'iptal', BELIRSIZ: 'belirsiz'}.get(
             sonuc.durum, 'tamam' if sonuc.basarili else 'hata')
@@ -250,6 +252,7 @@ class Yurutucu:
         bitis = time.monotonic() + sure
         cagri_jetonu = jeton.cocuk()
         baglam = Baglam(cagri_jetonu, depo=self.depo, izinler=self.izinler, kaynak=kaynak, son_tarih=bitis)
+        baglam.kirli = self._kirli
         kutu = {}
 
         def is_parcacigi():

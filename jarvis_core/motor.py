@@ -86,18 +86,24 @@ class Motor:
                                  lambda olay, veri: self.bildir(olay, veri), self.a)
 
     # ------------------------------------------------------------- prompt
-    def _talimat(self) -> str:
+    def _talimat(self, istek: str = '') -> str:
         son = self.depo.son_islemler(6)
         son_metin = ''
         if son:
             son_metin = 'Son yaptığın dosya/uygulama işlemleri (eskiden yeniye):\n' + '\n'.join(
                 f"- {s['arac']} {s['argumanlar']} -> {(s['cikti'] or '')[:120]}" for s in son) + '\n'
-        kayitlar = self.depo.hafiza()
+        # Relevant records for this request first, then the most recent ones (no prompt dump).
+        tumu = self.depo.hafiza()
+        kayitlar = {k['id']: k for k in self.depo.hafiza_ara(istek, 8)}
+        for k in tumu[-10:]:
+            kayitlar.setdefault(k['id'], k)
         hafiza = ''
         if kayitlar:
-            hafiza = ('Kullanıcı hakkında kalıcı hafıza (tarihli; çelişkide YENİ olan geçerlidir):\n' + '\n'.join(
-                f"- [{time.strftime('%d.%m.%Y', time.localtime(k['tarih']))}] {k['metin']}"
-                for k in kayitlar[-30:]))
+            hafiza = ('Kullanıcı hakkında kalıcı hafıza (tarihli; çelişkide YENİ olan geçerlidir; "doğrulanmamış" '
+                      'olanlar kullanıcıdan değil, okunan içerikten gelmiştir):\n' + '\n'.join(
+                          f"- [{time.strftime('%d.%m.%Y', time.localtime(k['tarih']))}] {k['metin']}"
+                          f"{' (doğrulanmamış)' if k.get('dogruluk') == 'dogrulanmadi' else ''}"
+                          for k in sorted(kayitlar.values(), key=lambda k: k['tarih'])))
         referans = ''
         dolu = {t: v for t, v in self.referanslar.items() if v}
         if dolu:
@@ -178,7 +184,7 @@ class Motor:
         if arac_secimi.acik_mi():
             katalog = {a.ad for a in KAYIT.values() if a.modele_acik}
             gd.arac_adlari, self.son_gruplar = arac_secimi.sec(istek, self.son_gruplar, katalog)
-        mesajlar = [{'role': 'system', 'content': self._talimat()}]
+        mesajlar = [{'role': 'system', 'content': self._talimat(istek)}]
         for onceki_istek, onceki_cevap in self.oturum[-4:]:
             mesajlar += [{'role': 'user', 'content': onceki_istek}, {'role': 'assistant', 'content': onceki_cevap}]
         gd.gorev_basi = len(mesajlar)
@@ -239,7 +245,7 @@ class Motor:
         if not kontrol:
             gd = self._eski_kayittan_durum(gid, mesajlar)
         if mesajlar[0].get('role') == 'system':
-            mesajlar[0] = {'role': 'system', 'content': self._talimat()}
+            mesajlar[0] = {'role': 'system', 'content': self._talimat(gorev['istek'])}
         # Tool calls the model asked for whose results were never recorded.
         bekleyen = []
         for i in range(len(mesajlar) - 1, -1, -1):
