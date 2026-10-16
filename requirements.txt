@@ -28,6 +28,7 @@ openpyxl>=3.1
 
 # Web
 requests>=2.26
+playwright>=1.45              # browser control; uses the installed Edge (no browser download)
 beautifulsoup4>=4.10         # amazon.py
 pytubefix>=6.0               # youtube_downloader.py
 

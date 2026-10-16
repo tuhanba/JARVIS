@@ -5,6 +5,7 @@ import asyncio
 import os
 import queue
 import re
+import sys
 import tempfile
 import threading
 
@@ -84,9 +85,12 @@ def _yerel_konus(metin: str) -> None:
     """Windows SAPI - only with a Turkish voice. An English voice reading Turkish
     is what made JARVIS sound mixed and unclear, so that is never used."""
     global _pyttsx
-    import pyttsx3
-
+    if sys.platform != 'win32':
+        raise RuntimeError('Windows sesi yalnız Windows\'ta')
+    if _pyttsx is False:
+        raise RuntimeError('Windows\'ta Türkçe ses yok')
     if _pyttsx is None:
+        import pyttsx3
         motor = pyttsx3.init()
         for v in motor.getProperty('voices'):
             kimlik = f'{v.id} {v.name}'.lower()
@@ -95,6 +99,9 @@ def _yerel_konus(metin: str) -> None:
                 _pyttsx = motor
                 break
         else:
+            _pyttsx = False      # checked once; never keep an English engine around
+            motor.stop()
+            del motor
             raise RuntimeError('Windows\'ta Türkçe ses yok')
     _pyttsx.say(metin)
     _pyttsx.runAndWait()
@@ -103,7 +110,7 @@ def _yerel_konus(metin: str) -> None:
 def sustur() -> None:
     """Stop speaking now (user pressed stop or started talking)."""
     _sus.set()
-    if _pyttsx is not None:
+    if _pyttsx:
         try:
             _pyttsx.stop()
         except Exception:

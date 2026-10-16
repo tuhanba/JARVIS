@@ -104,8 +104,11 @@ def belge_oku(baglam, yol, ilk_sayfa=1, sayfa_sayisi=20):
             icerik, bilgi = p.read_text(encoding='utf-8', errors='replace'), 'Metin dosyası.'
     except Exception as e:
         return Sonuc(False, f'Belge okunamadı ({e.__class__.__name__}): {e}')
-    kesildi = len(icerik) > SINIR
-    return Sonuc(True, f'[{p.name}: {bilgi}{" İlk " + str(SINIR) + " karakter." if kesildi else ""}]\n{icerik[:SINIR]}',
+    # Fit the context window: about a quarter of it for one document.
+    from ..ayarlar import Ayarlar
+    sinir = min(SINIR, int(Ayarlar().baglam * 0.75))
+    kesildi = len(icerik) > sinir
+    return Sonuc(True, f'[{p.name}: {bilgi}{" İlk " + str(sinir) + " karakter; devamı için ilk_sayfa ile okuyun." if kesildi else ""}]\n{icerik[:sinir]}',
                  veri={'yol': str(p), 'karakter': len(icerik)})
 
 

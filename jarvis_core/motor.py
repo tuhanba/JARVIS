@@ -17,7 +17,7 @@ import time
 from collections import Counter
 from dataclasses import dataclass
 
-from . import yollar
+from . import gruplar, yollar
 from .araclar import KAYIT, Baglam, Iptal, Sonuc
 from .ayarlar import Ayarlar
 from .depo import Depo
@@ -48,6 +48,7 @@ Kurallar:
 - "Onu", "diğer klasöre", "geri al" gibi ifadeler için aşağıdaki son işlemlere bak. Yanlış yapılan bir işlemi
   düzeltmek için son_islemi_geri_al kullanabilirsin.
 - Güncel bilgi gereken sorularda internette_ara kullan ve kaynağın adını söyle.
+- Gereken araç listede yoksa araclari_ac ile ilgili grubu aç (ör. tarayıcı, belge, indirme).
 
 Bağlam: {zaman}. İşletim sistemi: {isletim}. Ev klasörü: {ev}.
 {son_islemler}{hafiza}"""
@@ -97,8 +98,26 @@ class Motor:
                               isletim=f'{platform.system()} {platform.release()}',
                               ev=str(yollar.coz('ev')), son_islemler=son_metin, hafiza=hafiza)
 
-    def _araclar(self) -> list:
-        return [a.sema() for a in KAYIT.values()]
+    def _araclar(self, gruplar_=None) -> list:
+        """Schemas for the selected tool groups (all tools if None) + the meta tool."""
+        if gruplar_ is None:
+            return [a.sema() for a in KAYIT.values()]
+        adlar = [ad for ad in gruplar.araclar(gruplar_) if ad in KAYIT]
+        # tools registered outside the group table (skills, tests) are always offered
+        adlar += [ad for ad in KAYIT if gruplar.grup_bul(ad) is None]
+        return [KAYIT[ad].sema() for ad in adlar] + [gruplar.META]
+
+    def _baglami_sigdir(self, mesajlar: list) -> None:
+        """Keep the conversation inside the context window: shorten the oldest
+        tool outputs first (the latest ones stay intact)."""
+        butce = int(self.a.baglam * 3.0 * 0.62)          # ~3 chars/token, leave room for tools + answer
+        toplam = sum(len(str(m.get('content') or '')) for m in mesajlar)
+        for m in mesajlar[1:-4]:
+            if toplam <= butce:
+                break
+            if m['role'] == 'tool' and len(m['content']) > 400:
+                toplam -= len(m['content']) - 400
+                m['content'] = m['content'][:400] + ' …(kısaltıldı)'
 
     # ------------------------------------------------------------- public
     def iptal_et(self) -> None:
@@ -140,7 +159,9 @@ class Motor:
     def _dongu(self, gid: str, mesajlar: list, bekleyen: list) -> GorevSonucu:
         baslangic = time.time()
         durum = {'adim': len(self.depo.adimlar(gid)), 'kirli': False, 'sayac': Counter(), 'son': {}}
-        araclar = self._araclar()
+        # Tool groups: core + what the request (and recent turns) need + groups already used in this task.
+        ipucu = ' '.join(str(m.get('content') or '') for m in mesajlar if m['role'] == 'user')[-1500:]
+        durum['gruplar'] = gruplar.sec(ipucu) | {gruplar.grup_bul(a['arac']) for a in self.depo.adimlar(gid)} - {None}
         try:
             for cagri in bekleyen:
                 mesajlar.append(self._cagri_isle(gid, cagri, durum))
@@ -158,7 +179,8 @@ class Motor:
                 if durum['tur'] > self.a.max_adim * 2:
                     return self._bitir(gid, 'butce_asildi', 'Model çok fazla deneme yaptı, durdum.', mesajlar)
                 self.bildir('dusunuyor', {'gorev': gid})
-                cevap = self.llm.sohbet(mesajlar, araclar, self.iptal)
+                self._baglami_sigdir(mesajlar)
+                cevap = self.llm.sohbet(mesajlar, self._araclar(durum['gruplar']), self.iptal)
                 asistan = {'role': 'assistant', 'content': cevap['content']}
                 if cevap['tool_calls']:
                     asistan['tool_calls'] = cevap['tool_calls']
@@ -206,7 +228,14 @@ class Motor:
         return {'role': 'tool', 'tool_name': ad, 'content': metin}
 
     def _arac_calistir(self, gid: str, ad: str, argumanlar: dict, durum: dict) -> str:
+        if ad == 'araclari_ac':
+            istenen = {g for g in (argumanlar.get('gruplar') or []) if g in gruplar.GRUPLAR}
+            durum['gruplar'] |= istenen
+            return ('BAŞARILI: açıldı: ' + ', '.join(sorted(istenen))) if istenen else \
+                'BAŞARISIZ: geçerli grup yok. Gruplar: ' + ', '.join(gruplar.ACIKLAMALAR)
         arac = KAYIT.get(ad)
+        if arac and gruplar.grup_bul(ad):
+            durum['gruplar'].add(gruplar.grup_bul(ad))
         if not arac:
             return f'BAŞARISIZ: "{ad}" diye bir araç yok. Mevcut araçlar: {", ".join(KAYIT)}'
         try:

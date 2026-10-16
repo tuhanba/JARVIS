@@ -1,6 +1,6 @@
 """Tool catalogue. Importing this package registers every built-in tool."""
 from .temel import KAYIT, Arac, Baglam, Iptal, Sonuc, arac
-from . import dosyalar, uygulamalar, bilgi, program, hafiza_araclari, ekran, belgeler, indirme
+from . import dosyalar, uygulamalar, bilgi, program, hafiza_araclari, ekran, belgeler, indirme, tarayici
 
 __all__ = ['KAYIT', 'Arac', 'Baglam', 'Iptal', 'Sonuc', 'arac',
-           'dosyalar', 'uygulamalar', 'bilgi', 'program', 'hafiza_araclari', 'ekran', 'belgeler', 'indirme']
+           'dosyalar', 'uygulamalar', 'bilgi', 'program', 'hafiza_araclari', 'ekran', 'belgeler', 'indirme', 'tarayici']
