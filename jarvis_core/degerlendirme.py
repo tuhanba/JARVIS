@@ -69,7 +69,7 @@ GOREVLER = [
      'istekler': ['Belgelerdeki toplanti.txt dosyasını oku. Toplantı hangi gün?'],
      'kontrol': lambda ev, s, m: _cevap_icerir(s, 'perşembe')},
     {'ad': 'sohbet', 'tur': 'sohbet', 'istekler': ["Türkiye'nin başkenti neresi?"],
-     'kontrol': lambda ev, s, m: _cevap_icerir(s, 'ankara') and not m.depo.adimlar(s[-1].gorev_id)},
+     'kontrol': lambda ev, s, m: _cevap_icerir(s, 'ankara') and 'istanbul' not in s[-1].cevap.lower()},
     {'ad': 'yok_dosya_durust', 'tur': 'durust',
      'istekler': ["Belgelerdeki boyle_bir_dosya_yok.txt dosyasını Masaüstü'ne taşı."],
      'kontrol': lambda ev, s, m: _bitmedi(s)},
@@ -138,7 +138,10 @@ def gorevi_calistir(gorev: dict, model: str, llm=None) -> dict:
         olcumler = [dict(r) for r in m.depo.calistir_ham('SELECT * FROM olcumler')]
         return {'gorev': gorev['ad'], 'tur': gorev['tur'], 'model': model, 'gecti': gecti,
                 'durumlar': [s.durum for s in sonuclar], 'cevap': sonuclar[-1].cevap[:300], 'sure_sn': round(sure, 2),
-                'sahte_basari': (not gecti) and sonuclar[-1].durum == 'tamamlandi',
+                # A false success is the engine claiming a task it did not do. A wrong fact in a chat
+                # answer is a model accuracy error, counted separately.
+                'sahte_basari': (not gecti) and sonuclar[-1].durum == 'tamamlandi' and gorev['tur'] != 'sohbet',
+                'yanlis_cevap': (not gecti) and gorev['tur'] == 'sohbet',
                 'sorulan_onay': len(sorular), 'model_turu': len(olcumler),
                 'soguk_yukleme_sn': round(sum(x['yukleme_sn'] or 0 for x in olcumler if x['soguk']), 2),
                 'ilk_parca_sn': [x['ilk_parca_sn'] for x in olcumler if x['ilk_parca_sn'] is not None],
@@ -160,6 +163,7 @@ def ozetle(sonuclar: list) -> list:
         satirlar.append({'model': model, 'deneme': len(ms), 'gecen': sum(s['gecti'] for s in ms),
                          'basari_orani': round(100 * sum(s['gecti'] for s in ms) / len(ms), 1),
                          'sahte_basari': sum(s['sahte_basari'] for s in ms),
+                         'yanlis_cevap': sum(s.get('yanlis_cevap', False) for s in ms),
                          'ort_gorev_sn': round(statistics.mean(s['sure_sn'] for s in ms), 1),
                          'ilk_parca_p50_sn': round(statistics.median(ilk), 2) if ilk else None,
                          'token_hizi_ort': round(statistics.mean(hizlar), 1) if hizlar else None})
@@ -195,6 +199,7 @@ def main(argv=None) -> None:
     print('\nÖzet (başarı = bağımsız son durum kontrolü; sahte başarı hedefi 0):')
     for o in ozet:
         print(f"  {o['model']:<18} {o['gecen']}/{o['deneme']} (%{o['basari_orani']})  sahte başarı: {o['sahte_basari']}  "
+              f"yanlış sohbet cevabı: {o['yanlis_cevap']}  "
               f"ort. görev {o['ort_gorev_sn']} sn  ilk parça p50 {o['ilk_parca_p50_sn']} sn  "
               f"üretim {o['token_hizi_ort']} tok/sn")
     hedef = veri_dizini / 'degerlendirme'

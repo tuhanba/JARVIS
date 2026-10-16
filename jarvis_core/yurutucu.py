@@ -202,6 +202,13 @@ class Yurutucu:
         else:
             amac_durumu = DOGRULANDI if sonuc.dogrulandi is True else BASARILI
         amac = self._amac_yaz(gd, anahtar, ad, argumanlar, amac_durumu, sonuc.cikti, eylem_id)
+        if not sonuc.basarili and sonuc.hata_turu == 'yanlis_arac':
+            amac['yanlis_arac_yol'] = sonuc.veri.get('yol')
+        if sonuc.basarili and yan_etkili and sonuc.veri.get('yol'):
+            # The same target was then done with the right tool: the wrong-tool attempt is compensated.
+            for a in gd.amaclar.values():
+                if a.get('yanlis_arac_yol') == sonuc.veri['yol'] and a['durum'] == HATA:
+                    a['durum'] = TELAFI
         if sonuc.basarili and yan_etkili and gd.amaclar.get('eylemsiz', {}).get('durum') == YAPILMADI:
             gd.amaclar['eylemsiz']['durum'] = TELAFI
         if sonuc.basarili:
@@ -320,10 +327,14 @@ def basari_iddiasi(metin: str) -> bool:
     return bool(_BASARI_IDDIASI.search(kucuk(metin)))
 
 
+_ETIKET = re.compile(r'^\s*(BAŞARILI|BAŞARISIZ)(,\s*DOĞRULAN(DI|AMADI))?\s*:\s*', re.IGNORECASE)
+
+
 def sonuc_ozeti(gd: GorevDurumu, model_cevabi: str):
     """(task state, user-facing answer). The answer is corrected to the real outcome:
-    a model saying "done" over a failed goal is replaced, not decorated."""
-    model_cevabi = (model_cevabi or '').strip()
+    a model saying "done" over a failed goal is replaced, not decorated. Small models
+    sometimes copy our tool-result labels ("BAŞARILI: ...") into the answer; removed."""
+    model_cevabi = _ETIKET.sub('', (model_cevabi or '').strip()).strip()
     sorunlu = gd.sorunlu_amaclar()
     if not sorunlu:
         return 'tamamlandi', model_cevabi or 'Tamamdır efendim.'

@@ -23,6 +23,8 @@ from ..izinler import OKUMA, SILME, YAZMA
 from .temel import Iptal, Sonuc, arac, metin
 
 PARCA = 1 << 20   # copy chunk size (cancel is checked between chunks)
+DOSYA_UZANTILARI = {'.txt', '.md', '.csv', '.json', '.pdf', '.docx', '.doc', '.xlsx', '.xls', '.pptx', '.html', '.py',
+                    '.js', '.png', '.jpg', '.jpeg', '.mp3', '.mp4', '.zip', '.log', '.xml'}
 
 ATLA = {'appdata', 'node_modules', '.git', '__pycache__', '$recycle.bin', 'windows', 'program files',
         'program files (x86)', 'programdata', '.venv', 'venv'}
@@ -192,6 +194,11 @@ def dosya_yaz(baglam, yol, icerik, uzerine_yaz=False):
       zaten_yapildi=lambda a: yollar.coz(a['yol']).is_dir(), amac_argumanlari=('yol',))
 def klasor_olustur(baglam, yol):
     p = yollar.coz(yol)
+    if p.suffix.lower() in DOSYA_UZANTILARI and not p.exists():
+        # Small models create a folder "liste.txt" and then cannot write the file into it.
+        return Sonuc(False, f'"{p.name}" bir dosya adına benziyor; klasör oluşturmadım. Dosya için dosya_yaz kullan '
+                            '(üst klasörler kendiliğinden oluşur).', dogrulandi=False, hata_turu='yanlis_arac',
+                     veri={'yol': str(p)})
     vardi = p.is_dir()
     try:
         p.mkdir(parents=True, exist_ok=True)

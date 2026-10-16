@@ -211,3 +211,18 @@ def test_tek_model_kurali_surec_genelinde(monkeypatch):
     i1._bosalt('kucuk')
     i2._bosalt('buyuk')                                  # another instance: still unloads 'kucuk'
     assert bosaltilan == ['kucuk']
+
+
+# ----------------------------------------------------------------- found by the benchmark (qwen3:1.7b)
+
+def test_uzantili_ada_klasor_acilmaz(motor_yap, ev):
+    m = motor_yap([[('klasor_olustur', {'yol': 'Belgeler/alisveris.txt'})],
+                   [('dosya_yaz', {'yol': 'Belgeler/alisveris.txt', 'icerik': 'süt'})], 'Oluşturdum.'])
+    s = m.calistir('Belgeler klasörüne alisveris.txt oluştur, içine süt yaz')
+    assert (ev / 'Documents' / 'alisveris.txt').is_file() and s.durum == 'tamamlandi'
+    assert 'dosya_yaz kullan' in m.depo.adimlar(s.gorev_id)[0]['cikti']
+
+
+def test_arac_etiketi_cevaptan_temizlenir(motor_yap, ev):
+    m = motor_yap(['BAŞARILI, DOĞRULANDI: Türkiye\'nin başkenti Ankara\'dır.'])
+    assert m.calistir('Türkiye\'nin başkenti neresi?').cevap == "Türkiye'nin başkenti Ankara'dır."

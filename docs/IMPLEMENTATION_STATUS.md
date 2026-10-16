@@ -16,7 +16,7 @@ Playwright + Chromium ile gerçek tarayıcı denemesi yapıldı (onay kartı, re
 `speech_recognition` import ettiği için bu paket kurulu değilken 24 test import hatasıyla düşüyordu; artık
 tembel import ediliyor.
 
-## Aşama A — Çekirdek doğruluk ve güvenilirlik: **tamamlandı (Linux'ta)**
+## Aşama A — Çekirdek doğruluk ve güvenilirlik: **tamamlandı (Linux + Windows CI)**
 
 Regresyon testleri önce yazıldı ve eski kodda çalıştırıldı: `tests/test_asama_a.py` → **57 failed, 6 passed**
 (davranış hataları doğrudan gözlendi: "şunu yaz: bilgisayarı kapat" kapatma fonksiyonunu çağırdı, `*` izin
@@ -60,7 +60,62 @@ kopyalama iptalde yarım dosya bıraktı). Düzeltmeden sonra: **101 passed, 3 s
 - Okuma amaçları araç adına göre gruplanır (aynı aracın sonraki başarılı okuması önceki okuma hatasını
   çözer); bu, keşif aramalarını cezalandırmamak için bilinçli bir uzlaşmadır.
 
+## Aşama B — Ollama zekâ katmanı: **çekirdek tamam**
+
+Canlı ortam: bu konteynere Ollama 0.40.5 (CPU, 4 çekirdek, GPU yok) + `qwen3:1.7b`, `qwen3:4b` kuruldu.
+Canlı testler gerçek hataları buldu ve düzeltildi:
+
+1. **Konuşup iş yapmama = sahte başarı.** qwen3:1.7b "Belgeler'e alisveris.txt oluştur" isteğine hiç araç
+   çağırmadan "Tamamdır efendim." dedi; motor `tamamlandi` verdi, dosya yoktu. Artık eylem isteyen istekte yan
+   etkili hiçbir adım yoksa bir düzeltme turu verilir, yine yoksa `dogrulanamadi` + "hiçbir işlem yapılmadı".
+2. **Düşünce sızıntısı.** Bu qwen3:4b sürümü `think=False`'u yok sayıp akıl yürütmesini cevap metnine yazdı
+   ("Okay, so I need to figure out...") → panele ve sese gidecekti. Model başına bir kerelik yoklama + `<think>`
+   ayıklayıcı eklendi.
+3. **İki model aynı anda bellekte.** `OLLAMA_TEK_MODEL` istemci örneğine bağlıydı; süreç geneline taşındı.
+
+Ayrıca: araç seçimi + `arac_katalogu`, kod profili, gerçek token akışı, tur ölçümleri (`/olcumler`), bağlam
+bütçesi, referans belleği, çok amaçlı cümle yönlendirmesi, `python -m jarvis_core.degerlendirme`.
+
+Ölçüm notu: qwen3:4b bu CPU'da tur başına 1000+ düşünme token'ı × ~4 tok/sn ≈ 5 dk/tur üretti; değerlendirme
+pratik olmadığı için **ölçülmedi**. Gerçek karşılaştırma kullanıcının GPU'lu makinesinde yapılmalı (NEXT_STEPS).
+
+DEGERLENDIRME_SONUCU
+
+## Aşama C — Yerel Türkçe ses: **yazılım tarafı tamam, donanım doğrulaması blocked**
+
+- Varsayılan yerel: faster-whisper (`small`, `tr`, alan sözlüğü) + Piper `tr_TR-dfki-medium`. Çevrimiçi Google/Edge
+  yalnız `JARVIS_SES_CEVRIMICI=1`. Türkçe ses yoksa İngilizce ses kullanılmaz, yazı gösterilir.
+- **Davranış değişikliği:** eski kurulumlar Google/Edge ile konuşuyordu. Güncellemeden sonra
+  `python -m jarvis_core.audio.kur` (kur.bat 4. adım) çalıştırılmadan ses tanıma/çıkışı yoktur; panel ve
+  `saglik` bunu ve çözümünü yazar. Eski çevrimiçi davranış için `.env`: `JARVIS_SES_CEVRIMICI=1`.
+- Çevrimdışı tur (Piper → whisper small, CPU): "Belgeler klasörüne alışveriş listesi oluştur." birebir; "Saat
+  14:30 da toplantı var." doğru; "İndirilenlerdeki faturayı Belgelere taşı." → "belirlere"; "Chrome'u aç." →
+  yanlış. Tanıma 1.3–2.9 sn/cümle (CPU, başka iş yükü varken). Sentetik ses gerçek kullanıcı sesi değildir.
+- Blocked (mikrofon/hoparlör yok): gerçek mikrofonda doğruluk, wake word, barge-in, yankı, cihaz değişimi
+  (T14–T16), sürekli tek mikrofon akışı.
+
+## Aşama E/F/G çekirdekleri
+
+- E: güvenli web okuma (`ag.py`): 2 MB sınır, metin türleri, yönlendirme başına denetim, yerel ağ yalnız
+  `/ag-izin` ile. Playwright tarayıcı servisi ve indirme yöneticisi **yapılmadı**.
+- F: `belge_oku` (PDF/DOCX/XLSX/CSV/TXT, konum + sha256, sınırlar, bozuk/taranmış belge). OCR ve belge üretimi
+  **yapılmadı**.
+- G: hafıza v4 (konu bazlı sürüm, FTS5 getirme, unutma indeksten silinir, harici içerikten gelen iddia
+  "doğrulanmamış"). Hafıza ekranı ve embedding **yapılmadı**.
+
+## Aşama J — hatırlatıcı (F14): **tamam**
+
+SQLite + UTC, Europe/Istanbul gösterim, kaçırılan politika, iki kopyada çift teslim yok, günlük/haftalık tekrar.
+Windows CI, Windows'ta saat dilimi veritabanı olmadığını gösterdi → `tzdata` + sabit ofset yedeği.
+
+## CI
+
+`.github/workflows/test.yml`: ubuntu-latest + windows-latest, başsız test paketi. Windows runner'da Stage A
+süreç ağacı testi (Job Object) geçti. Bu, masaüstü/mikrofon doğrulaması değildir.
+
 ## Sonraki aşamalar
 
-Sıra şartname §21'e göre: B (Ollama zekâ/performans) → C (ses) → D/E/F → G → H → I/J → K/L.
-Ayrıntılı bir sonraki adım: kök dizindeki `NEXT_STEPS.md`.
+Sıra şartname §21'e göre: kalan B (plan/replan, özet) → C donanım doğrulaması → D (UIA/OCR ekran) → E
+(Playwright, indirme) → F (OCR, rapor üretimi, artifact) → G (hafıza ekranı) → H (kod/site, sandbox) → I
+(beceri, MCP) → J (rutinler, tetikleyiciler) → K (React panel, ekranlar) → L (pyproject, kurulum sihirbazı,
+paketleme). Ayrıntılı bir sonraki adım: kök dizindeki `NEXT_STEPS.md`.
