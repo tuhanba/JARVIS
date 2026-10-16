@@ -1,10 +1,15 @@
 """Tool definition, registry and the execution context handed to tools."""
 import subprocess
+import sys
 import threading
 from dataclasses import dataclass, field
 from typing import Callable, Optional
 
 import jsonschema
+
+
+# No console window flashing up for child processes when running windowless (pythonw).
+PENCERESIZ = 0x08000000 if sys.platform == 'win32' else 0
 
 
 class Iptal(Exception):
@@ -38,7 +43,7 @@ class Baglam:
     def surec(self, argv: list, zaman_asimi: float = 120, cwd=None) -> subprocess.CompletedProcess:
         """Run a program (never through a shell); kill it on cancel or timeout."""
         p = subprocess.Popen(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, cwd=cwd,
-                             text=True, encoding='utf-8', errors='replace')
+                             text=True, encoding='utf-8', errors='replace', creationflags=PENCERESIZ)
         bekleme = 0.0
         while True:
             try:

@@ -13,7 +13,8 @@ from .ayarlar import Ayarlar
 
 def _komut(argv, zaman=8):
     try:
-        p = subprocess.run(argv, capture_output=True, text=True, timeout=zaman, errors='replace')
+        p = subprocess.run(argv, capture_output=True, text=True, timeout=zaman, errors='replace',
+                           creationflags=0x08000000 if sys.platform == 'win32' else 0)
         return p.stdout.strip() if p.returncode == 0 else None
     except (OSError, subprocess.TimeoutExpired):
         return None

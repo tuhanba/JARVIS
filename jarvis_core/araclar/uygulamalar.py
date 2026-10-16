@@ -9,7 +9,7 @@ import psutil
 
 from .. import yollar
 from ..izinler import OKUMA, YAZMA
-from .temel import Sonuc, arac, metin
+from .temel import PENCERESIZ, Sonuc, arac, metin
 
 WIN = sys.platform == 'win32'
 
@@ -132,7 +132,7 @@ def uygulama_kapat(baglam, ad):
     if not hedefler:
         return Sonuc(True, f'{ad} zaten açık değil.', dogrulandi=True)
     if WIN:
-        subprocess.run(['taskkill', '/im', surec], capture_output=True)
+        subprocess.run(['taskkill', '/im', surec], capture_output=True, creationflags=PENCERESIZ)
     else:
         for p in hedefler:
             p.terminate()

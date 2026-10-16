@@ -11,14 +11,31 @@ yarıda kalan görev yeniden başlatmada sürdürülebilir ve yapılmış işlem
 
 ## Kurulum (Windows)
 
-1. [Python 3.12](https://www.python.org/downloads/) kurun ("Add Python to PATH" işaretli).
-2. **`kur.bat`**: Python paketlerini, Ollama'yı ve `.env` içindeki modeli indirir.
-3. **`saglik.bat`**: donanım, Ollama, modeller, mikrofon ve internet raporunu gösterir.
-4. Başlatma:
-   - **`baslat.bat`** sesli asistan, **`yazarak_baslat.bat`** klavyeyle,
-   - **`gorev_motoru.bat`** görev motoru konsolu (`/yardim`, `/gorevler`, `/izinler`, `/devam`, `/geri-al`).
+JARVIS klasöründe adres çubuğuna `cmd` yazıp Enter'a basın ve sırayla çalıştırın:
 
-Bilgisayarınız zayıfsa `.env` dosyasında `OLLAMA_MODEL=qwen3.5:4b` yapıp `kur.bat`'ı tekrar çalıştırın.
+```
+python -m pip install -r requirements.txt
+copy .env.example .env
+winget install -e --id Ollama.Ollama
+ollama pull qwen3.5:9b
+python kisayol_olustur.py
+```
+
+Son komut masaüstüne **JARVIS** simgesi koyar. Çift tıklayınca JARVIS paneli kendi penceresinde açılır
+(Edge uygulama modu, konsol penceresi yok). Windows açılışında başlasın isterseniz:
+`python kisayol_olustur.py --baslangic` (kaldırmak için `--kaldir`).
+
+Diğer giriş noktaları: `python -m jarvis_core.saglik` (donanım/Ollama raporu),
+`python -m jarvis_core` (konsol), `python jarvis.py` (yalnız ses).
+
+## Panel
+
+- Ortadaki HUD durumu renkle gösterir: camgöbeği hazır, yeşil dinliyor, amber düşünüyor/çalışıyor, kırmızı hata.
+- Sol: işlemci, bellek, GPU, VRAM, sıcaklık; Ollama ve model durumu; hızlı komutlar.
+- Sağ: aktif görev ve görev akışı (her araç adımı, sonucu ve doğrulama durumu).
+- Alt: komut satırı, mikrofon (bas-konuş, Ctrl+Boşluk), uyandırma sözcüğü ("Jarvis ..."), sesli yanıt, **DURDUR** (Esc).
+- Onay gereken işlemlerde Evet/Hayır penceresi açılır (E/H tuşları).
+- Panel yalnızca bu bilgisayardan (127.0.0.1) ve her açılışta değişen gizli bir anahtarla erişilebilir.
 
 ## Güvenlik ve izinler
 

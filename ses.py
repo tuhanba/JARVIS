@@ -11,6 +11,7 @@ SES = os.getenv('JARVIS_SES', 'tr-TR-AhmetNeural')
 
 _yazi_modu = False
 _kilit = threading.Lock()  # reminder threads and the main loop must not talk at once
+_sus = threading.Event()   # set by sustur() to cut the current sentence short
 _pyttsx = None
 
 
@@ -40,7 +41,10 @@ def _edge_konus(metin: str) -> None:
         pygame.mixer.music.load(yol)
         pygame.mixer.music.play()
         while pygame.mixer.music.get_busy():
-            pygame.time.wait(100)
+            if _sus.is_set():
+                pygame.mixer.music.stop()
+                break
+            pygame.time.wait(50)
         pygame.mixer.music.unload()
     finally:
         os.remove(yol)
@@ -61,9 +65,20 @@ def _yerel_konus(metin: str) -> None:
     _pyttsx.runAndWait()
 
 
+def sustur() -> None:
+    """Stop speaking now (user pressed stop or started talking)."""
+    _sus.set()
+    if _pyttsx is not None:
+        try:
+            _pyttsx.stop()
+        except Exception:
+            pass
+
+
 def konus(metin: str) -> None:
     print(f'JARVIS: {metin}')
     with _kilit:
+        _sus.clear()
         try:
             _edge_konus(metin)
         except Exception:
